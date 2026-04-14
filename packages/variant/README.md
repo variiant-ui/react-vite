@@ -20,7 +20,7 @@ export default defineConfig({
 });
 ```
 
-Keep normal component imports in the app and place exploratory variants under a mirrored top-level `.variants/` tree. If production should ship something other than `source`, add a `variant.json` manifest to declare the selected implementation.
+Keep normal component imports in the app and place exploratory variants under a mirrored top-level `.variants/` tree. Development exposes `source` plus discovered variants, while production imports only one implementation for a given component boundary.
 
 Default shortcuts:
 
@@ -28,4 +28,4 @@ Default shortcuts:
 - `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` changes the active mounted component
 - `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` changes the active variant
 
-See the repo root `README.md` and `docs/` for the architecture, proving app, and adoption notes.
+See the repo root `README.md` and `docs/` for the architecture, local proving workflow, and adoption notes.

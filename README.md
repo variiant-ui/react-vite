@@ -63,8 +63,7 @@ The current repo supports mirrored `.variants/` folders for discovery. The sourc
 - `default/<name>.tsx` overrides the module default export
 - `<NamedExport>/<name>.tsx` overrides a named export
 - the generated proxy exposes `source` plus all discovered variants to the runtime
-
-If you want production to ship a non-`source` implementation or you need custom file mapping, add an optional `variant.json` manifest alongside the mirrored variants. That manifest is the current source of truth for production selection.
+- production imports exactly one implementation for each variantable boundary
 
 ## Default keybindings
 
@@ -74,13 +73,13 @@ If you want production to ship a non-`source` implementation or you need custom 
 
 The component and variant shortcuts work whether the overlay is open or closed. The overlay is intentionally transient and capped to a compact control bar rather than a persistent sidebar.
 
-## Example app
+## Local proving
 
-The current proving app is [examples/shadcn-admin](/Users/darko/personal/variant/examples/shadcn-admin).
+We keep the proving app outside this repo so the package is exercised like a normal consumer dependency.
 
-- source components live under [examples/shadcn-admin/src/features/dashboard](/Users/darko/personal/variant/examples/shadcn-admin/src/features/dashboard)
-- exploratory variants live under [examples/shadcn-admin/.variants](/Users/darko/personal/variant/examples/shadcn-admin/.variants)
-- the Vite integration lives in [examples/shadcn-admin/vite.config.ts](/Users/darko/personal/variant/examples/shadcn-admin/vite.config.ts:1)
+- use a separate local app such as a sibling `shadcn-admin` checkout
+- link `@variiant-ui/react-vite` from this repo into that app for day-to-day development
+- keep the source components and `.variants/` tree in the host app, not in this package repo
 
 ## Documents
 

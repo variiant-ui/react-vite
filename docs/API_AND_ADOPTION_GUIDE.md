@@ -20,7 +20,6 @@ Current public API:
 - `variantPlugin()` for Vite
 - top-level `.variants/`
 - mirrored source-path folders for default and named export targets
-- optional `variant.json` manifests for explicit production selection or custom mapping
 - one installable package for the whole browser workflow
 
 That is the whole integration surface.
@@ -67,23 +66,6 @@ Variant does not require app code to import a generated proxy or mount a provide
 
 The source component remains the implicit default variant named `source`.
 
-### 5. Add a manifest when production should ship a non-source variant
-
-```json
-{
-  "source": "src/components/OrdersTable.tsx",
-  "displayName": "Orders Table",
-  "selected": "compact",
-  "variants": ["compact", "cta"]
-}
-```
-
-Use `variant.json` when you need:
-
-- an explicit production selection that is not `source`
-- a stable display name
-- custom mapping instead of same-name sibling files
-
 ## How it works
 
 In development:
@@ -96,7 +78,7 @@ In development:
 In production:
 
 - the plugin still rewrites the import
-- but it rewrites it to only the selected implementation declared by the manifest or to `source` if no manifest overrides it
+- but it rewrites it to only one production implementation for that component boundary
 - non-selected exploratory files are not imported into the production module graph
 
 That keeps the app import stable while moving all Variant behavior into the toolchain.

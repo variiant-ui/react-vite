@@ -15,7 +15,7 @@ This repo publishes `@variiant-ui/react-vite`. Keep the public install story as 
 - `packages/variant/src/runtime-dom.ts`: browser event bindings and compact overlay UI.
 - `packages/variant/src/runtime-api.ts`: singleton browser-facing helpers such as `installVariantOverlay()` and `setVariantShortcuts()`.
 - `packages/variant/src/runtime.tsx`: React proxy adapter that binds source and variant components to the controller.
-- `examples/shadcn-admin`: proving app for local UX and integration checks.
+- local proving app: keep the real consumer app outside this repo. The current local target is `~/personal/shadcn-admin`, linked back to this repo as a package consumer.
 - `docs/`: product, adoption, proving, and implementation notes that must stay aligned with the shipped behavior.
 
 ## Working rules
@@ -27,11 +27,11 @@ This repo publishes `@variiant-ui/react-vite`. Keep the public install story as 
 - Business logic belongs in `runtime-core.ts` unless there is a hard browser dependency.
 - Browser-only code belongs in `runtime-dom.ts` or `runtime-singleton.ts`.
 - React-only rendering concerns belong in `runtime.tsx`.
-- If the public package name changes, update generated import strings in `plugin.ts`, docs, example apps, and package metadata in the same change.
+- If the public package name changes, update generated import strings in `plugin.ts`, docs, the external proving app, and package metadata in the same change.
 
 ## Documentation checklist
 
-- Update root `README.md` when install, imports, shortcuts, or example-app paths change.
+- Update root `README.md` when install, imports, shortcuts, or the local proving workflow change.
 - Update `packages/variant/README.md` before publishing so npm gets accurate package docs.
 - Update `docs/API_AND_ADOPTION_GUIDE.md` and `docs/IMPLEMENTATION_PLAN.md` when architecture or file conventions change.
 - Update `docs/LOCAL_PROVING_PLAN.md` when the proving workflow changes.
@@ -39,6 +39,9 @@ This repo publishes `@variiant-ui/react-vite`. Keep the public install story as 
 ## Versioning
 
 - Current phase is pre-1.0 semver, starting at `0.1.0`.
+- Do not bump the package version for repo moves, local proving-app changes, or doc-only cleanup unless that change is part of an actual release.
 - Patch releases are for fixes, docs, and non-breaking tooling cleanup.
-- Minor releases may still contain breaking changes before `1.0.0`, but every breaking change must be documented in the README and relevant docs in the same release.
+- Minor releases cover any intentional user-visible package behavior change, public API/config change, shortcut change, or breaking change while pre-1.0.
+- If a change is only for local workflow, internal cleanup, or unreleased proving ergonomics, keep the version unchanged.
+- Every breaking change must be documented in the README and relevant docs in the same release.
 - Do not publish a new version unless build, tests, and docs have all been updated together.

@@ -4,14 +4,13 @@
   "version": "0.1.0",
   "license": "MIT",
   "workspaces": [
-    "packages/*",
-    "examples/*"
+    "packages/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace packages/variant",
     "test": "npm run test --workspace packages/variant",
-    "dev:demo": "concurrently -k -n variiant,shadcn-admin -c blue,green \"npm run dev --workspace packages/variant\" \"npm run dev --workspace examples/shadcn-admin\"",
-    "build:demo": "npm run build --workspace packages/variant && npm run build --workspace examples/shadcn-admin"
+    "build:package": "npm run build --workspace packages/variant"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
@@ -21,7 +20,6 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
     "jsdom": "^26.1.0",
-    "concurrently": "^9.2.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "tsup": "^8.3.5",

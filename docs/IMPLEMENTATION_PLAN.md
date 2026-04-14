@@ -46,7 +46,6 @@ Rules:
 - `default/<name>.tsx` overrides the default export
 - `<NamedExport>/<name>.tsx` overrides a named export
 - the mirrored path under `.variants/` must match the real source module path
-- optional `variant.json` manifests can declare a non-`source` production selection or custom variant paths
 
 ## Compatibility model
 
@@ -78,7 +77,7 @@ Main pieces:
 - headless runtime controller in [packages/variant/src/runtime-core.ts](/Users/darko/personal/variant/packages/variant/src/runtime-core.ts:1)
 - browser bindings and overlay in [packages/variant/src/runtime-dom.ts](/Users/darko/personal/variant/packages/variant/src/runtime-dom.ts:1)
 - React proxy adapter in [packages/variant/src/runtime.tsx](/Users/darko/personal/variant/packages/variant/src/runtime.tsx:1)
-- proving app in [examples/shadcn-admin](/Users/darko/personal/variant/examples/shadcn-admin)
+- proving workflow through an external consumer app linked to this repo locally
 
 ### Development behavior
 
@@ -90,7 +89,7 @@ For a source file that has a matching `.variants` entry:
 4. Variant generates a virtual proxy module.
 5. That proxy imports:
    - the source component as `source`
-   - all exploratory variants listed in `variant.json`
+   - all discovered exploratory variants for that boundary
 6. The runtime exposes those choices through the overlay and keybindings.
 
 ### Production behavior
@@ -100,8 +99,7 @@ For the same component:
 1. Vite resolves the same normal import.
 2. Variant rewrites it to a production proxy module.
 3. That proxy imports only:
-   - the original source component, if `selected` is `source`
-   - or the selected exploratory variant declared by `variant.json`
+   - the single production implementation for that component boundary
 4. Non-selected variants are absent from the production import graph.
 
 ## Runtime behavior
@@ -174,7 +172,7 @@ Implemented:
 - production selected-variant rewriting
 - development overlay and keybindings
 - split runtime architecture with headless controller, browser adapter, and React adapter
-- proving app with unchanged imports and externalized variants
+- external proving workflow with unchanged imports and externalized variants
 
 Not implemented yet:
 

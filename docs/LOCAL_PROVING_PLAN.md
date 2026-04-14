@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Prove the current architecture in a real web app we own:
+Prove the current architecture in a real web app we own, outside this package repo:
 
 - imports stay normal
 - exploratory variants live under top-level `.variants/`
@@ -38,6 +38,8 @@ Good targets:
 - report summary
 
 Avoid tiny primitives for the first proof. The point is to prove a real component swap.
+
+Keep the proving app in a separate checkout and link `@variiant-ui/react-vite` to this repo locally. The goal is to exercise the package the same way a real adopter would.
 
 ## Proof setup
 
@@ -96,10 +98,9 @@ Use this script:
 
 Then verify production:
 
-1. If the chosen implementation is not `source`, add or update `variant.json` with the selected variant name.
-2. Run a production build.
-3. Inspect the built output.
-4. Confirm non-selected variant strings or modules are absent.
+1. Run a production build.
+2. Inspect the built output.
+3. Confirm exploratory variant strings or modules are absent from the production bundle.
 
 ## Pass criteria
 
