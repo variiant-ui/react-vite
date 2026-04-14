@@ -1,0 +1,53 @@
+{
+  "name": "@variiant-ui/react-vite",
+  "version": "0.1.0",
+  "description": "React + Vite component variant tooling with a development overlay and production-safe selection.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/variiant-ui/react-vite.git"
+  },
+  "homepage": "https://github.com/variiant-ui/react-vite#readme",
+  "bugs": {
+    "url": "https://github.com/variiant-ui/react-vite/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "react",
+    "vite",
+    "components",
+    "variants",
+    "design-systems",
+    "design-iteration",
+    "ui"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "vite": ">=5"
+  }
+}
