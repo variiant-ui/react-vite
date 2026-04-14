@@ -39,7 +39,7 @@ Good targets:
 
 Avoid tiny primitives for the first proof. The point is to prove a real component swap.
 
-Keep the proving app in a separate checkout and install `@variiant-ui/react-vite` from this repo via an npm local file dependency. The goal is to exercise the package the same way a real adopter would.
+Keep the proving app in a separate checkout and install `@variiant-ui/react-vite` from this repo via an npm local file dependency with `npm install --install-links`. That gives the host app a normal installed package shape instead of a symlink while still consuming your local checkout.
 
 ## Proof setup
 

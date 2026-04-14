@@ -78,7 +78,7 @@ The component and variant shortcuts work whether the overlay is open or closed. 
 We keep the proving app outside this repo so the package is exercised like a normal consumer dependency.
 
 - use a separate local app such as a sibling `shadcn-admin` checkout
-- install `@variiant-ui/react-vite` from this repo via an npm local file dependency for day-to-day development
+- install `@variiant-ui/react-vite` from this repo via an npm local file dependency, using `npm install --install-links` so the host app gets a normal installed package shape rather than a symlink
 - keep the source components and `.variants/` tree in the host app, not in this package repo
 
 ## Documents
