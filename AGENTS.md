@@ -15,7 +15,7 @@ This repo publishes `@variiant-ui/react-vite`. Keep the public install story as 
 - `packages/variant/src/runtime-dom.ts`: browser event bindings and compact overlay UI.
 - `packages/variant/src/runtime-api.ts`: singleton browser-facing helpers such as `installVariantOverlay()` and `setVariantShortcuts()`.
 - `packages/variant/src/runtime.tsx`: React proxy adapter that binds source and variant components to the controller.
-- local proving app: keep the real consumer app outside this repo. The current local target is `~/personal/shadcn-admin`, linked back to this repo as a package consumer.
+- local proving app: keep the real consumer app outside this repo. The current local target is `~/personal/shadcn-admin`, which installs this package via an npm local file dependency.
 - `docs/`: product, adoption, proving, and implementation notes that must stay aligned with the shipped behavior.
 
 ## Working rules
