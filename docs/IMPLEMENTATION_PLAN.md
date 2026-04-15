@@ -937,9 +937,9 @@ If those interactions become too awkward in JSDOM, that is the point where a sma
 
 The safest build order is:
 
-1. Introduce the new surface state, canvas camera state, and direct shortcut without rendering actual previews yet.
-2. Ship `Components` mode with live React portals, representative-instance registration, and viewport culling.
-3. Ship `Pages` mode with sequential cached document captures for the active target component.
+1. ✅ Introduce the new surface state, canvas camera state, and direct shortcut without rendering actual previews yet.
+2. ✅ Ship `Components` mode with live React portals, representative-instance registration, and viewport culling.
+3. ✅ Ship `Pages` mode with sequential cached document captures for the active target component.
 4. Add polish such as reset-view, empty states, loading shells, and stronger capture invalidation.
 
 This order matters because it delivers user value early without forcing the hardest part, full-page comparison, to block the correct state model.

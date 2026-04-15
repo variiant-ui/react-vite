@@ -93,10 +93,13 @@ Use this script:
 4. Press `Cmd/Ctrl + Shift + .` to open the overlay.
 5. Confirm the mounted component appears in the overlay.
 6. Switch to each exploratory variant.
-7. Confirm the page still functions.
-8. Use `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` to switch the active mounted component.
-9. Use `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` to switch the active variant.
-10. Refresh and confirm the local runtime selection persists if expected.
+7. Press `Cmd/Ctrl + Shift + ,` to open the fullscreen canvas.
+8. Confirm `Components` mode shows only the mounted component families on the current page, with source-file labels in the top-left of each group.
+9. Switch to `Pages` mode and confirm the active component family renders as full-page previews, one preview per variant.
+10. Confirm the page still functions.
+11. Use `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` to switch the active mounted component.
+12. Use `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` to switch the active variant.
+13. Refresh and confirm the local runtime selection persists if expected.
 
 Then verify production:
 
@@ -111,6 +114,7 @@ The proof passes if:
 - the host app import paths remain untouched
 - exploratory files live fully in `.variiant/variants/`
 - runtime swapping works on a real mounted component
+- current-page canvas comparison works in both `Components` and `Pages` modes
 - keyboard navigation works
 - non-selected variants are absent from the production bundle
 - the integration diff feels small enough that another team would accept it

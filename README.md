@@ -8,6 +8,7 @@ The public developer experience is intentionally one package:
 - keep normal component imports
 - put experiments under `.variiant/variants/`
 - open the overlay only when needed with `Cmd/Ctrl + Shift + .`
+- open the comparison canvas with `Cmd/Ctrl + Shift + ,`
 - change the active mounted component and variant with keyboard shortcuts
 
 Internally, the package is split so the business logic stays testable and decoupled from React rendering:
@@ -71,10 +72,16 @@ The canonical variant workspace lives under `.variiant/variants/`. The source im
 ## Default keybindings
 
 - `Cmd/Ctrl + Shift + .` toggles the overlay
+- `Cmd/Ctrl + Shift + ,` toggles the fullscreen comparison canvas
 - `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` changes the active mounted component
 - `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` changes the active variant
 
-The component and variant shortcuts work whether the overlay is open or closed. The overlay is intentionally transient and capped to a compact control bar rather than a persistent sidebar.
+The component and variant shortcuts work whether the overlay or canvas is open. The overlay is intentionally transient and capped to a compact control bar rather than a persistent sidebar.
+
+The fullscreen canvas has two modes:
+
+- `Components` shows only the currently mounted variant families on the current page, grouped side by side with top-left source-file labels and vertically stacked variants
+- `Pages` captures full-page previews for the active component family so you can compare each variant in context
 
 ## Local agent bridge
 

@@ -97,7 +97,7 @@ In development:
 - the plugin scans `.variiant/variants/`
 - when the app imports a component that has a matching mirrored variant folder, the plugin rewrites that import to a virtual proxy module
 - the proxy exports the source component plus all discovered exploratory variants
-- the browser runtime exposes those variants in the overlay and keybindings
+- the browser runtime exposes those variants in the overlay, fullscreen comparison canvas, and keybindings
 
 In production:
 
@@ -157,6 +157,7 @@ This repo currently implements:
 
 - Vite plugin integration
 - development overlay and keybindings
+- fullscreen comparison canvas with `Components` and `Pages` modes
 - production-safe selected-variant builds
 - `.variiant/variants` conventions, with fallback to legacy `.variants`
 - a single package that contains the Vite plugin, browser overlay, and React runtime adapter

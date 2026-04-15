@@ -47,6 +47,185 @@ describe("variant runtime proxy", () => {
     expect(screen.getByText("Source table")).toBeInTheDocument();
   });
 
+  it("opens the fullscreen canvas from the direct shortcut and closes it with escape", async () => {
+    const DashboardCard = createVariantProxy({
+      sourceId: "src/pages/home/dashboard.tsx",
+      displayName: "Home Dashboard",
+      selected: "source",
+      variants: {
+        source: function DashboardSource() {
+          return <div>Dashboard source</div>;
+        },
+        editorial: function DashboardEditorial() {
+          return <div>Dashboard editorial</div>;
+        },
+      },
+    });
+
+    render(<DashboardCard />);
+    installVariantOverlay();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ",",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(getVariantRuntimeState().canvasOpen).toBe(true);
+    });
+    expect(document.querySelector('[data-variiant-canvas-fullscreen="true"]')).not.toBeNull();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(getVariantRuntimeState().canvasOpen).toBe(false);
+    });
+    expect(document.querySelector('[data-variiant-canvas-fullscreen="true"]')).toBeNull();
+  });
+
+  it("shows only currently mounted component families in components mode and labels groups by source file", async () => {
+    const DashboardCard = createVariantProxy({
+      sourceId: "src/pages/home/dashboard.tsx",
+      displayName: "Home Dashboard",
+      selected: "source",
+      variants: {
+        source: function DashboardSource() {
+          return <div>Dashboard source</div>;
+        },
+        editorial: function DashboardEditorial() {
+          return <div>Dashboard editorial</div>;
+        },
+      },
+    });
+
+    const MatrixCard = createVariantProxy({
+      sourceId: "src/components/MatrixCard.tsx",
+      displayName: "Matrix Card",
+      selected: "source",
+      variants: {
+        source: function MatrixSource() {
+          return <div>Matrix source</div>;
+        },
+        calm: function MatrixCalm() {
+          return <div>Matrix calm</div>;
+        },
+      },
+    });
+
+    createVariantProxy({
+      sourceId: "src/components/NotMounted.tsx",
+      displayName: "Not Mounted",
+      selected: "source",
+      variants: {
+        source: function NotMountedSource() {
+          return <div>Not mounted</div>;
+        },
+      },
+    });
+
+    render(
+      <>
+        <DashboardCard />
+        <MatrixCard />
+        <MatrixCard />
+      </>,
+    );
+
+    installVariantOverlay();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ",",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-variant-canvas-group-source="src/pages/home/dashboard.tsx"]').length).toBe(1);
+    });
+
+    expect(document.body.textContent).toContain("src/pages/home/dashboard.tsx");
+    expect(document.body.textContent).toContain("src/components/MatrixCard.tsx");
+    expect(document.body.textContent).toContain("2 mounts");
+    expect(document.querySelector('[data-variant-canvas-group-source="src/components/NotMounted.tsx"]')).toBeNull();
+  });
+
+  it("captures page previews for the current target component and restores the live selection afterwards", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({
+      fillStyle: "#ffffff",
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D));
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockImplementation(() => "data:image/png;base64,page-preview");
+    vi.mocked(toCanvas).mockImplementation(async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1200;
+      canvas.height = 900;
+      return canvas;
+    });
+
+    const MatrixCard = createVariantProxy({
+      sourceId: "src/components/MatrixCard.tsx",
+      displayName: "Matrix Card",
+      selected: "source",
+      variants: {
+        source: function MatrixSource() {
+          return <div>Matrix source</div>;
+        },
+        calm: function MatrixCalm() {
+          return <div>Matrix calm</div>;
+        },
+      },
+    });
+
+    render(<MatrixCard />);
+    installVariantOverlay();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ".",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    const activeChoice = await waitFor(() => {
+      const select = document.querySelector('[data-variant-active-choice="true"]') as HTMLSelectElement | null;
+      expect(select).not.toBeNull();
+      return select!;
+    });
+
+    fireEvent.change(activeChoice, {
+      target: {
+        value: "calm",
+      },
+    });
+    await screen.findByText("Matrix calm");
+
+    const openCanvasButton = await screen.findByText("Open Canvas");
+    fireEvent.click(openCanvasButton);
+    fireEvent.click(await screen.findByText("Pages"));
+
+    await waitFor(() => {
+      expect(toCanvas).toHaveBeenCalledTimes(2);
+    });
+
+    expect(getVariantRuntimeState().selections["src/components/MatrixCard.tsx"]).toBe("calm");
+    expect(screen.getByText("Matrix calm")).toBeInTheDocument();
+    expect(document.querySelectorAll('img[alt="source page preview"], img[alt="calm page preview"]').length).toBe(2);
+  });
+
   it("supports global component cycling with overlay open or closed", () => {
     const DashboardCard = createVariantProxy({
       sourceId: "src/components/DashboardCard.tsx",

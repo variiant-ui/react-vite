@@ -44,7 +44,10 @@ The overlay can then submit prompts to the local CLI, collapse the prompt area i
 Default shortcuts:
 
 - `Cmd/Ctrl + Shift + .` toggles the overlay
+- `Cmd/Ctrl + Shift + ,` toggles the fullscreen comparison canvas
 - `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` changes the active mounted component
 - `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` changes the active variant
+
+The fullscreen canvas stays scoped to the current page. `Components` mode lays out the mounted component families side by side with visible source-file labels, while `Pages` mode captures full-page previews for the active component family so you can compare variants in context.
 
 See the repo root `README.md` and `docs/` for the architecture, local proving workflow, and adoption notes.
