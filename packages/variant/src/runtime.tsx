@@ -1,8 +1,11 @@
 import React, {
+  createContext,
   useEffect,
+  useContext,
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type ComponentType,
   type ReactNode,
@@ -42,6 +45,7 @@ import { getRepresentativeMountedInstance } from "./runtime-core";
 export type { ProxyDefinition } from "./runtime-react-types";
 
 let nextVariantInstanceId = 1;
+const VariantCanvasPreviewContext = createContext(false);
 
 export function createVariantProxy<Props extends object>({
   sourceId,
@@ -61,6 +65,7 @@ export function createVariantProxy<Props extends object>({
   });
 
   function VariantProxy(props: Props): ReactNode {
+    const isCanvasPreview = useContext(VariantCanvasPreviewContext);
     const snapshot = useSyncExternalStore(
       controller.subscribe,
       () => controller.getSnapshot(),
@@ -74,14 +79,25 @@ export function createVariantProxy<Props extends object>({
       height: number | null;
       isVisible: boolean;
     } | null>(null);
+    const [portalRefreshVersion, setPortalRefreshVersion] = useState(0);
 
     if (!instanceIdRef.current) {
       instanceIdRef.current = `variant-instance-${nextVariantInstanceId++}`;
     }
     const instanceId = instanceIdRef.current;
 
-    useEffect(() => controller.mount(sourceId), []);
     useEffect(() => {
+      if (isCanvasPreview) {
+        return undefined;
+      }
+
+      return controller.mount(sourceId);
+    }, [controller, isCanvasPreview, sourceId]);
+    useEffect(() => {
+      if (isCanvasPreview) {
+        return undefined;
+      }
+
       controller.actions.registerMountedInstance({
         instanceId,
         sourceId,
@@ -91,12 +107,16 @@ export function createVariantProxy<Props extends object>({
       return () => {
         controller.actions.unregisterMountedInstance(instanceId);
       };
-    }, []);
+    }, [controller, displayName, instanceId, isCanvasPreview, sourceId]);
 
     useLayoutEffect(() => {
+      if (isCanvasPreview) {
+        return undefined;
+      }
+
       const element = boundaryRef.current;
       if (!element) {
-        return;
+        return undefined;
       }
 
       let frameId = 0;
@@ -133,7 +153,7 @@ export function createVariantProxy<Props extends object>({
         cancelAnimationFrame(frameId);
         window.removeEventListener("resize", scheduleUpdate);
       };
-    }, [controller, instanceId]);
+    }, [controller, instanceId, isCanvasPreview]);
 
     const Component = useMemo(
       () => variants[currentVariant] ?? variants[initialSelected] ?? variants.source,
@@ -142,9 +162,33 @@ export function createVariantProxy<Props extends object>({
 
     const representativeInstance = getRepresentativeMountedInstance(snapshot, sourceId);
     const shouldRenderCanvasPreviews =
+      !isCanvasPreview
+      && portalRefreshVersion >= 0
       snapshot.canvasOpen
       && snapshot.canvas.mode === "components"
       && representativeInstance?.instanceId === instanceId;
+
+    useEffect(() => {
+      if (!shouldRenderCanvasPreviews) {
+        return undefined;
+      }
+
+      let frameId = window.requestAnimationFrame(() => {
+        setPortalRefreshVersion((value) => value + 1);
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }, [
+      shouldRenderCanvasPreviews,
+      snapshot.surface,
+      snapshot.canvas.mode,
+      snapshot.canvas.targetSourceId,
+      snapshot.components.length,
+      sourceId,
+      variantNames.join("|"),
+    ]);
 
     const canvasPreviewPortals = shouldRenderCanvasPreviews
       ? variantNames.map((variantName) => {
@@ -156,14 +200,16 @@ export function createVariantProxy<Props extends object>({
           const PreviewComponent = variants[variantName] ?? variants[initialSelected] ?? variants.source;
           return createPortal(
             (
-              <div
-                data-variiant-canvas-preview="true"
-                data-variiant-canvas-source-id={sourceId}
-                data-variiant-canvas-variant={variantName}
-                style={canvasPreviewStyle()}
-              >
-                <PreviewComponent {...props} />
-              </div>
+              <VariantCanvasPreviewContext.Provider value={true}>
+                <div
+                  data-variiant-canvas-preview="true"
+                  data-variiant-canvas-source-id={sourceId}
+                  data-variiant-canvas-variant={variantName}
+                  style={canvasPreviewStyle()}
+                >
+                  <PreviewComponent {...props} />
+                </div>
+              </VariantCanvasPreviewContext.Provider>
             ),
             slot,
             `${instanceId}:${variantName}`,
