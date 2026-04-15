@@ -201,4 +201,41 @@ describe("variant runtime controller", () => {
     expect(representative?.instanceId).toBe("instance-b");
     expect(representative?.width).toBe(360);
   });
+
+  it("does not emit updates for unchanged mounted-instance measurements", () => {
+    const controller = createVariantRuntimeController();
+    const listener = vi.fn();
+    controller.subscribe(listener);
+
+    controller.define({
+      sourceId: "src/components/OrdersTable.tsx",
+      displayName: "Orders Table",
+      selected: "source",
+      variantNames: ["source", "compact"],
+    });
+    controller.mount("src/components/OrdersTable.tsx");
+    controller.actions.registerMountedInstance({
+      instanceId: "instance-a",
+      sourceId: "src/components/OrdersTable.tsx",
+      displayName: "Orders Table",
+    });
+
+    listener.mockClear();
+
+    controller.actions.updateMountedInstance("instance-a", {
+      width: 320,
+      height: 160,
+      isVisible: true,
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    listener.mockClear();
+
+    controller.actions.updateMountedInstance("instance-a", {
+      width: 320,
+      height: 160,
+      isVisible: true,
+    });
+    expect(listener).not.toHaveBeenCalled();
+  });
 });

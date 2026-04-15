@@ -229,6 +229,34 @@ export function getRepresentativeMountedInstance(
   return candidates.find((instance) => instance.isVisible) ?? candidates[0] ?? null;
 }
 
+function shallowEqualRecord(
+  left: Record<string, string>,
+  right: Record<string, string>,
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+
+  return leftKeys.every((key) => left[key] === right[key]);
+}
+
+function mountedInstanceEquals(
+  left: MountedVariantInstance,
+  right: MountedVariantInstance,
+): boolean {
+  return (
+    left.instanceId === right.instanceId
+    && left.sourceId === right.sourceId
+    && left.displayName === right.displayName
+    && left.width === right.width
+    && left.height === right.height
+    && left.mountedAt === right.mountedAt
+    && left.isVisible === right.isVisible
+  );
+}
+
 export function createVariantRuntimeController(options: {
   storage?: VariantRuntimeStorage;
 } = {}): VariantRuntimeController {
@@ -557,12 +585,24 @@ export function createVariantRuntimeController(options: {
         emit();
       },
       setTemporarySelections(selections) {
+        if (state.temporarySelections === selections) {
+          return;
+        }
+
+        if (
+          state.temporarySelections
+          && selections
+          && shallowEqualRecord(state.temporarySelections, selections)
+        ) {
+          return;
+        }
+
         state.temporarySelections = selections;
         emit();
       },
       registerMountedInstance(instance) {
         const existing = mountedInstances.get(instance.instanceId);
-        mountedInstances.set(instance.instanceId, {
+        const nextInstance = {
           instanceId: instance.instanceId,
           sourceId: instance.sourceId,
           displayName: instance.displayName,
@@ -570,7 +610,13 @@ export function createVariantRuntimeController(options: {
           height: existing?.height ?? null,
           isVisible: existing?.isVisible ?? false,
           mountedAt: existing?.mountedAt ?? Date.now(),
-        });
+        };
+
+        if (existing && mountedInstanceEquals(existing, nextInstance)) {
+          return;
+        }
+
+        mountedInstances.set(instance.instanceId, nextInstance);
         emit();
       },
       updateMountedInstance(instanceId, patch) {
@@ -579,10 +625,16 @@ export function createVariantRuntimeController(options: {
           return;
         }
 
-        mountedInstances.set(instanceId, {
+        const nextInstance = {
           ...existing,
           ...patch,
-        });
+        };
+
+        if (mountedInstanceEquals(existing, nextInstance)) {
+          return;
+        }
+
+        mountedInstances.set(instanceId, nextInstance);
         emit();
       },
       unregisterMountedInstance(instanceId) {

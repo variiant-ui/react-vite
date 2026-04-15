@@ -69,6 +69,11 @@ export function createVariantProxy<Props extends object>({
     const currentVariant = snapshot.effectiveSelections[sourceId] ?? initialSelected;
     const instanceIdRef = useRef<string | undefined>(undefined);
     const boundaryRef = useRef<HTMLSpanElement | null>(null);
+    const lastMeasurementRef = useRef<{
+      width: number | null;
+      height: number | null;
+      isVisible: boolean;
+    } | null>(null);
 
     if (!instanceIdRef.current) {
       instanceIdRef.current = `variant-instance-${nextVariantInstanceId++}`;
@@ -97,11 +102,24 @@ export function createVariantProxy<Props extends object>({
       let frameId = 0;
       const updateLayout = (): void => {
         const measurement = measureRenderableBoundary(element);
-        controller.actions.updateMountedInstance(instanceId, {
+        const nextMeasurement = {
           width: measurement?.width ?? null,
           height: measurement?.height ?? null,
           isVisible: Boolean(measurement && measurement.width > 0 && measurement.height > 0),
-        });
+        };
+
+        const previousMeasurement = lastMeasurementRef.current;
+        if (
+          previousMeasurement
+          && previousMeasurement.width === nextMeasurement.width
+          && previousMeasurement.height === nextMeasurement.height
+          && previousMeasurement.isVisible === nextMeasurement.isVisible
+        ) {
+          return;
+        }
+
+        lastMeasurementRef.current = nextMeasurement;
+        controller.actions.updateMountedInstance(instanceId, nextMeasurement);
       };
 
       const scheduleUpdate = (): void => {
@@ -115,7 +133,7 @@ export function createVariantProxy<Props extends object>({
         cancelAnimationFrame(frameId);
         window.removeEventListener("resize", scheduleUpdate);
       };
-    });
+    }, [controller, instanceId]);
 
     const Component = useMemo(
       () => variants[currentVariant] ?? variants[initialSelected] ?? variants.source,
