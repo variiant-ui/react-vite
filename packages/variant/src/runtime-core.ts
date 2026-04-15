@@ -31,10 +31,41 @@ export type RuntimeComponentRecord = VariantDefinition & {
   mountedCount: number;
 };
 
+export type VariantAgentStreamingMode = "auto" | "text" | "none";
+
+export type VariantAgentAvailability = {
+  enabled: boolean;
+  commandLabel: string | null;
+  message: string | null;
+  streaming: VariantAgentStreamingMode | null;
+  supportsImages: boolean;
+};
+
+export type VariantAgentLogEntry = {
+  id: number;
+  stream: "stdout" | "stderr" | "system";
+  text: string;
+};
+
+export type VariantAgentStatus = "idle" | "running" | "success" | "error";
+
+export type VariantAgentState = {
+  availability: VariantAgentAvailability;
+  prompt: string;
+  attachActiveComponentScreenshot: boolean;
+  status: VariantAgentStatus;
+  logs: VariantAgentLogEntry[];
+  sessionId: string | null;
+  exitCode: number | null;
+  changedFiles: string[];
+  error: string | null;
+};
+
 export type RuntimeState = {
   overlayOpen: boolean;
   activeSourceId: string | null;
   components: RuntimeComponentRecord[];
+  agent: VariantAgentState;
 };
 
 export type VariantRuntimeSnapshot = RuntimeState & {
@@ -65,12 +96,34 @@ export type VariantRuntimeController = {
     selectComponent: (sourceId: string | null) => void;
     selectVariant: (sourceId: string, variantName: string) => void;
     configureShortcuts: (overrides?: Partial<VariantShortcutConfig>) => void;
+    setAgentAvailability: (
+      availability: Partial<VariantAgentAvailability> & { enabled: boolean },
+    ) => void;
+    setAgentPrompt: (prompt: string) => void;
+    setAgentAttachActiveComponentScreenshot: (enabled: boolean) => void;
+    startAgentRun: () => void;
+    appendAgentLog: (stream: VariantAgentLogEntry["stream"], text: string) => void;
+    finishAgentRun: (result?: {
+      sessionId?: string | null;
+      exitCode?: number | null;
+      changedFiles?: string[];
+      error?: string | null;
+    }) => void;
+    clearAgentRun: () => void;
   };
 };
 
 type ControllerState = RuntimeState & {
   selections: Record<string, string>;
   shortcutConfig: VariantShortcutConfig;
+};
+
+const defaultAgentAvailability: VariantAgentAvailability = {
+  enabled: false,
+  commandLabel: null,
+  message: "Configure variiant.config.json to enable the local agent bridge.",
+  streaming: null,
+  supportsImages: false,
 };
 
 function rotate<T>(items: T[], currentIndex: number, direction: Direction): T | null {
@@ -102,6 +155,17 @@ export function createVariantRuntimeController(options: {
     overlayOpen: false,
     activeSourceId: null,
     components: [],
+    agent: {
+      availability: defaultAgentAvailability,
+      prompt: "",
+      attachActiveComponentScreenshot: false,
+      status: "idle",
+      logs: [],
+      sessionId: null,
+      exitCode: null,
+      changedFiles: [],
+      error: null,
+    },
     selections: storage?.readSelections() ?? {},
     shortcutConfig: {
       ...defaultShortcuts,
@@ -207,6 +271,7 @@ export function createVariantRuntimeController(options: {
         overlayOpen: state.overlayOpen,
         activeSourceId: state.activeSourceId,
         components: state.components,
+        agent: state.agent,
         selections: state.selections,
         shortcutConfig: state.shortcutConfig,
       };
@@ -266,6 +331,63 @@ export function createVariantRuntimeController(options: {
           ...overrides,
         };
         persistShortcuts();
+        emit();
+      },
+      setAgentAvailability(availability) {
+        state.agent.availability = {
+          ...state.agent.availability,
+          ...availability,
+        };
+        emit();
+      },
+      setAgentPrompt(prompt) {
+        state.agent.prompt = prompt;
+        emit();
+      },
+      setAgentAttachActiveComponentScreenshot(enabled) {
+        state.agent.attachActiveComponentScreenshot = enabled;
+        emit();
+      },
+      startAgentRun() {
+        state.agent.status = "running";
+        state.agent.logs = [];
+        state.agent.sessionId = null;
+        state.agent.exitCode = null;
+        state.agent.changedFiles = [];
+        state.agent.error = null;
+        emit();
+      },
+      appendAgentLog(stream, text) {
+        if (!text) {
+          return;
+        }
+
+        state.agent.logs = [
+          ...state.agent.logs,
+          {
+            id: state.agent.logs.length + 1,
+            stream,
+            text,
+          },
+        ];
+        emit();
+      },
+      finishAgentRun(result = {}) {
+        const exitCode = result.exitCode ?? 0;
+        state.agent.status = result.error || exitCode !== 0 ? "error" : "success";
+        state.agent.sessionId = result.sessionId ?? state.agent.sessionId;
+        state.agent.exitCode = result.exitCode ?? null;
+        state.agent.changedFiles = result.changedFiles ?? [];
+        state.agent.error = result.error ?? null;
+        emit();
+      },
+      clearAgentRun() {
+        state.agent.status = "idle";
+        state.agent.logs = [];
+        state.agent.sessionId = null;
+        state.agent.exitCode = null;
+        state.agent.changedFiles = [];
+        state.agent.error = null;
         emit();
       },
     },

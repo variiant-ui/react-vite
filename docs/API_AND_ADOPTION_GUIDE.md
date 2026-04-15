@@ -18,7 +18,8 @@ The implementation in this repo is designed around that bar.
 Current public API:
 
 - `variantPlugin()` for Vite
-- top-level `.variants/`
+- `.variiant/variants/` as the canonical variant workspace
+- optional top-level `variiant.config.json` for the local agent bridge
 - mirrored source-path folders for default and named export targets
 - one installable package for the whole browser workflow
 
@@ -30,6 +31,7 @@ That is the whole integration surface.
 
 ```bash
 npm install @variiant-ui/react-vite
+npm exec variiant init
 ```
 
 ### 2. Add the Vite plugin
@@ -55,22 +57,44 @@ Variant does not require app code to import a generated proxy or mount a provide
 ### 4. Add a top-level variant entry
 
 ```text
-.variants/
-  src/
-    components/
-      OrdersTable.tsx/
-        default/
-          compact.tsx
-          cta.tsx
+.variiant/
+  .gitignore
+  variants/
+    src/
+      components/
+        OrdersTable.tsx/
+          default/
+            compact.tsx
+            cta.tsx
 ```
 
 The source component remains the implicit default variant named `source`.
+
+### 5. Optional: enable the local agent bridge
+
+Create `variiant.config.json` in the app root:
+
+```json
+{
+  "agent": {
+    "command": ["codex", "exec", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check"],
+    "streaming": "text",
+    "image": {
+      "cliFlag": "--image"
+    }
+  }
+}
+```
+
+The recommended bootstrap path is `npm exec variiant init`, which writes the nested config shape above and creates `.variiant/.gitignore` with `sessions/` ignored. For compatibility, the loader also accepts flat keys such as `"agent.command"`, but the documented convention is the nested `agent` object only.
+
+That enables prompt submission from the floating bar to a local CLI running inside the project root. While a run is active, the prompt area becomes a compact latest-message progress strip instead of a raw terminal log. If `agent.image.cliFlag` is configured, Ask Agent also exposes an `Attach <component name> screenshot` checkbox that captures the active component at 1x, stores it in the request session, and passes the saved file to the CLI with that flag. The bridge is development-only and rejects agent working directories that escape the app root.
 
 ## How it works
 
 In development:
 
-- the plugin scans top-level `.variants/`
+- the plugin scans `.variiant/variants/`
 - when the app imports a component that has a matching mirrored variant folder, the plugin rewrites that import to a virtual proxy module
 - the proxy exports the source component plus all discovered exploratory variants
 - the browser runtime exposes those variants in the overlay and keybindings
@@ -121,7 +145,7 @@ This contract is the reason the architecture uses bundler rewriting instead of s
 The default flow matches how teams already think:
 
 - component stays where it already lives
-- designers or exploratory builders can work in `.variants/`
+- designers or exploratory builders can work in `.variiant/variants/`
 - the bundler handles the magic
 - engineers do not have to thread a new abstraction through the app
 
@@ -134,11 +158,11 @@ This repo currently implements:
 - Vite plugin integration
 - development overlay and keybindings
 - production-safe selected-variant builds
-- top-level `.variants` conventions
+- `.variiant/variants` conventions, with fallback to legacy `.variants`
 - a single package that contains the Vite plugin, browser overlay, and React runtime adapter
 
 Future adapters like Next.js should preserve the same mental model:
 
 - unchanged imports
-- top-level `.variants`
+- `.variiant/variants`
 - build-time import rewriting

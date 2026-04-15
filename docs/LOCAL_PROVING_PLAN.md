@@ -5,7 +5,7 @@
 Prove the current architecture in a real web app we own, outside this package repo:
 
 - imports stay normal
-- exploratory variants live under top-level `.variants/`
+- exploratory variants live under `.variiant/variants/`
 - development can swap them live
 - production only ships the selected implementation
 
@@ -72,13 +72,15 @@ Do not rewrite the app to import generated proxies or wrapper components.
 Example:
 
 ```text
-.variants/
-  src/
-    dashboard/
-      DashboardOverview.tsx/
-        default/
-          compact.tsx
-          editorial.tsx
+.variiant/
+  .gitignore
+  variants/
+    src/
+      dashboard/
+        DashboardOverview.tsx/
+          default/
+            compact.tsx
+            editorial.tsx
 ```
 
 ## Manual validation
@@ -107,7 +109,7 @@ Then verify production:
 The proof passes if:
 
 - the host app import paths remain untouched
-- exploratory files live fully in `.variants/`
+- exploratory files live fully in `.variiant/variants/`
 - runtime swapping works on a real mounted component
 - keyboard navigation works
 - non-selected variants are absent from the production bundle
@@ -126,7 +128,7 @@ The proof fails if:
 
 At the end of the proof, answer these:
 
-1. Is `.variants/` easier for teams to accept than colocated source wrappers?
+1. Is `.variiant/variants/` easier for teams to accept than colocated source wrappers?
 2. Does import rewriting feel invisible enough to be a strong day-1 value prop?
 3. Is the compatibility model permissive enough for exploratory design work?
 4. What is still needed before a Next.js adapter is credible?

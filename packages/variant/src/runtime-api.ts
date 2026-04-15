@@ -14,10 +14,5 @@ export function setVariantShortcuts(shortcuts: Partial<VariantShortcutConfig>): 
 }
 
 export function getVariantRuntimeState(): RuntimeState {
-  const state = getVariantRuntimeController().getSnapshot();
-  return {
-    overlayOpen: state.overlayOpen,
-    activeSourceId: state.activeSourceId,
-    components: state.components,
-  };
+  return getVariantRuntimeController().getSnapshot();
 }

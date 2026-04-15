@@ -1,6 +1,6 @@
 ---
 name: design-variants
-description: Create, update, or validate exploratory React component variants for this repo's Variant architecture. Use when working with the top-level `.variants/` tree, adding or editing `variant.json`, creating externalized component variants, ensuring imports in app code stay unchanged, or validating that the Vite plugin exposes variants correctly at runtime and ships only the selected implementation in production.
+description: Create, update, or validate exploratory React component variants for this repo's Variant architecture. Use when working with the top-level `.variants/` tree, creating externalized component variants, ensuring imports in app code stay unchanged, or validating that the Vite plugin exposes variants correctly at runtime and ships only the selected implementation in production.
 ---
 
 # Design Variants
@@ -28,22 +28,15 @@ Example:
 ```text
 src/dashboard/OrdersTable.tsx
 .variants/
-  OrdersTable/
-    variant.json
-    compact.tsx
-    cta.tsx
+  src/
+    dashboard/
+      OrdersTable.tsx/
+        default/
+          compact.tsx
+          cta.tsx
 ```
 
-Example `variant.json`:
-
-```json
-{
-  "source": "src/dashboard/OrdersTable.tsx",
-  "displayName": "Orders Table",
-  "selected": "source",
-  "variants": ["compact", "cta"]
-}
-```
+Optional top-level configuration belongs in `variiant.config.json`, not inside individual variant folders.
 
 ## Core workflow
 
@@ -53,7 +46,6 @@ Inspect:
 
 - the real source component module
 - the importing page or parent when needed
-- the matching `.variants/<Name>/variant.json` if it exists
 
 You need to understand:
 
@@ -80,13 +72,7 @@ Do not change app imports to point at the variant file.
 
 The app should continue importing the real source component path. The plugin handles the swap.
 
-### 4. Update `variant.json`
-
-Add the new variant name under `variants`.
-
-Do not change `selected` unless the user explicitly wants the new variant to become the production choice.
-
-### 5. Validate runtime behavior
+### 4. Validate runtime behavior
 
 For Vite apps in this repo, confirm:
 
@@ -117,11 +103,10 @@ After edits, validate all of these:
 
 1. The source component import path in app code is unchanged.
 2. The new variant file exists under top-level `.variants/`.
-3. `variant.json` lists the new variant.
-4. The Vite plugin is still enabled.
-5. The runtime overlay shows the mounted component in development.
-6. The new variant can be activated with the overlay or keybindings.
-7. A production build only includes the selected implementation.
+3. The Vite plugin is still enabled.
+4. The runtime overlay shows the mounted component in development.
+5. The new variant can be activated with the overlay or keybindings.
+6. A production build only includes the selected implementation.
 
 ## Keybindings
 

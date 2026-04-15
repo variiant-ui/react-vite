@@ -37,6 +37,9 @@
       "import": "./dist/runtime.js"
     }
   },
+  "bin": {
+    "variiant": "./dist/cli.js"
+  },
   "files": [
     "dist"
   ],
@@ -49,5 +52,8 @@
     "react": ">=18",
     "react-dom": ">=18",
     "vite": ">=5"
+  },
+  "dependencies": {
+    "html-to-image": "^1.11.13"
   }
 }

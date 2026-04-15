@@ -2,6 +2,11 @@ export { variantPlugin } from "./plugin";
 export {
   createVariantRuntimeController,
   defaultShortcuts,
+  type VariantAgentAvailability,
+  type VariantAgentLogEntry,
+  type VariantAgentState,
+  type VariantAgentStatus,
+  type VariantAgentStreamingMode,
   type RuntimeState,
   type VariantDefinition,
   type VariantRuntimeController,
@@ -11,7 +16,8 @@ export {
 } from "./runtime-core";
 export { setVariantShortcuts } from "./runtime-api";
 export type {
-  VariantManifest,
+  VariantAgentConfig,
+  VariantAppConfig,
   VariantPluginOptions,
   VariantRegistryEntry,
 } from "./plugin";

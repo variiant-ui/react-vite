@@ -13,6 +13,11 @@ import type { ProxyDefinition } from "./runtime-react-types";
 export {
   createVariantRuntimeController,
   defaultShortcuts,
+  type VariantAgentAvailability,
+  type VariantAgentLogEntry,
+  type VariantAgentState,
+  type VariantAgentStatus,
+  type VariantAgentStreamingMode,
   type RuntimeComponentRecord,
   type RuntimeState,
   type Shortcut,
@@ -55,7 +60,11 @@ export function createVariantProxy<Props extends object>({
       [currentVariant],
     );
 
-    return <Component {...props} />;
+    return (
+      <span data-variiant-source-id={sourceId} style={{ display: "contents" }}>
+        <Component {...props} />
+      </span>
+    );
   }
 
   VariantProxy.displayName = `${displayName.replace(/\s+/g, "")}VariantProxy`;
