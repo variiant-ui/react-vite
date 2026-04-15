@@ -92,6 +92,55 @@ describe("variant runtime proxy", () => {
     expect(document.querySelector('[data-variiant-canvas-fullscreen="true"]')).toBeNull();
   });
 
+  it("prevents native text selection and element dragging while panning the canvas", async () => {
+    const DashboardCard = createVariantProxy({
+      sourceId: "src/pages/home/dashboard.tsx",
+      displayName: "Home Dashboard",
+      selected: "source",
+      variants: {
+        source: function DashboardSource() {
+          return <div>Dashboard source</div>;
+        },
+        editorial: function DashboardEditorial() {
+          return <div>Dashboard editorial</div>;
+        },
+      },
+    });
+
+    render(<DashboardCard />);
+    installVariantOverlay();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ",",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    const viewport = await waitFor(() => {
+      const element = document.querySelector('[data-variant-canvas-viewport="true"]') as HTMLDivElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+
+    const selectStartEvent = new Event("selectstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    const dragStartEvent = new Event("dragstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    expect(viewport.dispatchEvent(selectStartEvent)).toBe(false);
+    expect(selectStartEvent.defaultPrevented).toBe(true);
+    expect(viewport.dispatchEvent(dragStartEvent)).toBe(false);
+    expect(dragStartEvent.defaultPrevented).toBe(true);
+    expect(viewport.getAttribute("style")).toContain("user-select: none");
+  });
+
   it("shows only currently mounted component families in components mode and labels groups by source file", async () => {
     const DashboardCard = createVariantProxy({
       sourceId: "src/pages/home/dashboard.tsx",

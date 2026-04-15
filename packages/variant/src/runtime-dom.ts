@@ -1037,6 +1037,7 @@ function getOrCreateCanvasDomState(
       return;
     }
 
+    event.preventDefault();
     dom.drag.active = true;
     dom.drag.pointerId = event.pointerId;
     dom.drag.lastX = event.clientX;
@@ -1070,6 +1071,12 @@ function getOrCreateCanvasDomState(
 
   viewport.addEventListener("pointerup", endDrag);
   viewport.addEventListener("pointercancel", endDrag);
+  viewport.addEventListener("selectstart", (event) => {
+    event.preventDefault();
+  });
+  viewport.addEventListener("dragstart", (event) => {
+    event.preventDefault();
+  });
   viewport.addEventListener("wheel", (event) => {
     event.preventDefault();
     const currentZoom = controller.getSnapshot().canvas.camera.zoom;
@@ -1985,6 +1992,8 @@ function canvasViewportStyle(): string {
     "overflow:hidden",
     "touch-action:none",
     "cursor:grab",
+    "user-select:none",
+    "-webkit-user-select:none",
   ].join(";");
 }
 
@@ -1996,6 +2005,8 @@ function canvasStageStyle(): string {
     "transform-origin:0 0",
     "will-change:transform",
     "padding:96px",
+    "user-select:none",
+    "-webkit-user-select:none",
   ].join(";");
 }
 
@@ -2003,6 +2014,8 @@ function canvasContentStyle(): string {
   return [
     "display:block",
     "min-width:max-content",
+    "user-select:none",
+    "-webkit-user-select:none",
   ].join(";");
 }
 
