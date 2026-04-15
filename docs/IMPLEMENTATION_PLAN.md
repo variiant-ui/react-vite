@@ -737,7 +737,7 @@ Recommended mechanism:
 
 This gives us live, context-correct component comparisons without introducing a provider the consumer app must mount manually.
 
-#### Pages mode: start with captured page previews
+#### Pages mode: duplicate the current page DOM
 
 Full live page duplication is a different problem.
 
@@ -745,9 +745,9 @@ The current package does not own the consumer app root, so it cannot safely clon
 
 The pragmatic v1 plan should therefore be:
 
-- page mode renders captured page previews, not fully interactive duplicated React pages
-- each preview is produced by temporarily applying a selection override for the target component, waiting for the page to settle, and capturing the document
-- the resulting preview tiles are then shown on the pan/zoom canvas
+- page mode renders duplicated DOM snapshots of the current page, not rasterized image captures
+- each preview is produced by temporarily applying a selection override for the target component, waiting for the page to settle, and cloning the live document subtree
+- the resulting DOM tiles are then shown on the pan/zoom canvas
 
 This still satisfies the main product need:
 

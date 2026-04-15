@@ -81,7 +81,7 @@ The component and variant shortcuts work whether the overlay or canvas is open. 
 The fullscreen canvas has two modes:
 
 - `Components` shows only the currently mounted variant families on the current page, grouped side by side with top-left source-file labels and vertically stacked variants
-- `Pages` captures full-page previews for the active component family so you can compare each variant in context
+- `Pages` clones the current page DOM for the active component family so you can compare each variant in context without rasterized previews
 
 ## Local agent bridge
 

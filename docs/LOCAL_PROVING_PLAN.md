@@ -95,7 +95,7 @@ Use this script:
 6. Switch to each exploratory variant.
 7. Press `Cmd/Ctrl + Shift + ,` to open the fullscreen canvas.
 8. Confirm `Components` mode shows only the mounted component families on the current page, with source-file labels in the top-left of each group.
-9. Switch to `Pages` mode and confirm the active component family renders as full-page previews, one preview per variant.
+9. Switch to `Pages` mode and confirm the active component family renders as duplicated full-page DOM previews, one preview per variant.
 10. Confirm the page still functions.
 11. Use `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` to switch the active mounted component.
 12. Use `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` to switch the active variant.

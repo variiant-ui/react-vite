@@ -36,7 +36,7 @@ type VariantAgentRequestAttachment = {
 
 type VariantPagePreview = {
   variantName: string;
-  dataUrl: string;
+  nodes: HTMLElement[];
   width: number;
   height: number;
 };
@@ -53,6 +53,7 @@ type VariantCanvasDomState = {
   resetButton: HTMLButtonElement;
   closeButton: HTMLButtonElement;
   lastContentKey: string | null;
+  lastAttachedPagePreviewKey: string | null;
   drag: {
     active: boolean;
     pointerId: number | null;
@@ -889,8 +890,9 @@ function renderCanvas(
   const contentKey = snapshot.canvas.mode === "components"
     ? buildComponentsContentKey(snapshot, mounted)
     : buildPagesContentKey(snapshot, targetComponent);
+  const contentChanged = dom.lastContentKey !== contentKey;
 
-  if (dom.lastContentKey !== contentKey) {
+  if (contentChanged) {
     if (snapshot.canvas.mode === "components") {
       dom.content.innerHTML = buildComponentsCanvasMarkup(snapshot, mounted);
     } else {
@@ -899,17 +901,20 @@ function renderCanvas(
       dom.content.innerHTML = buildPagesCanvasMarkup(snapshot, targetComponent, previews);
     }
     dom.lastContentKey = contentKey;
-  } else if (snapshot.canvas.mode === "pages") {
-    const requestKey = buildPagePreviewRequestKey(snapshot, targetComponent);
-    const previews = requestKey ? getPagePreviewState(controller).cache.get(requestKey) ?? [] : [];
-    dom.content.innerHTML = buildPagesCanvasMarkup(snapshot, targetComponent, previews);
   }
 
   if (snapshot.canvas.mode === "pages") {
+    const requestKey = buildPagePreviewRequestKey(snapshot, targetComponent);
+    const previews = requestKey ? getPagePreviewState(controller).cache.get(requestKey) ?? [] : [];
+    if (contentChanged || dom.lastAttachedPagePreviewKey !== requestKey) {
+      attachPagePreviewBodies(dom.content, previews);
+      dom.lastAttachedPagePreviewKey = requestKey;
+    }
     void ensurePageModePreviewCache(controller);
   } else {
     previewState.runningToken += 1;
     previewState.activeRequestKey = null;
+    dom.lastAttachedPagePreviewKey = null;
   }
 }
 
@@ -1000,6 +1005,7 @@ function getOrCreateCanvasDomState(
     resetButton,
     closeButton,
     lastContentKey: null,
+    lastAttachedPagePreviewKey: null,
     drag: {
       active: false,
       pointerId: null,
@@ -1097,6 +1103,7 @@ function buildComponentsContentKey(
         mountedCount: component.mountedCount,
         activeVariant: snapshot.effectiveSelections[component.sourceId] ?? component.selected,
         width: representative?.width ?? null,
+        preferredWidth: representative?.preferredWidth ?? null,
         height: representative?.height ?? null,
       };
     }),
@@ -1126,7 +1133,7 @@ function buildComponentsCanvasMarkup(
 
   return `<div style="${canvasGroupsRowStyle()}">${mounted.map((component) => {
     const representative = getRepresentativeMountedInstance(snapshot, component.sourceId);
-    const width = clamp(representative?.width ?? 320, 220, 560);
+    const width = getCanvasGroupWidth(representative);
     const slotHeight = clamp(representative?.height ?? 180, 120, 520);
     const activeVariant = snapshot.effectiveSelections[component.sourceId] ?? component.selected;
     return `
@@ -1164,17 +1171,42 @@ function buildPagesCanvasMarkup(
   const previewMap = new Map(previews.map((preview) => [preview.variantName, preview]));
   return `<div style="${canvasPagesRowStyle()}">${targetComponent.variantNames.map((variantName) => {
     const preview = previewMap.get(variantName);
-    const imageMarkup = preview
-      ? `<img alt="${escapeHtml(variantName)} page preview" src="${escapeHtml(preview.dataUrl)}" style="${canvasPageImageStyle()}" />`
+    const pageMarkup = preview
+      ? `<div
+          data-variant-page-preview-body-slot="${escapeHtml(variantName)}"
+          data-variant-page-preview-content="true"
+          style="${canvasPageContentStyle(preview.width, preview.height)}"
+        ></div>`
       : `<div style="${canvasPagePlaceholderStyle()}">${snapshot.canvas.captureState === "error" ? "Capture failed" : "Capturing preview..."}</div>`;
     return `
-      <section style="${canvasPageTileStyle()}">
+      <section data-variant-page-preview="${escapeHtml(variantName)}" style="${canvasPageTileStyle()}">
         <div style="${canvasGroupLabelStyle()}">${escapeHtml(targetComponent.sourceId)}</div>
         <div style="${canvasPageHeaderStyle()}">${escapeHtml(targetComponent.displayName)} • ${escapeHtml(variantName)}</div>
-        <div style="${canvasPageFrameStyle()}">${imageMarkup}</div>
+        <div style="${canvasPageFrameStyle()}">${pageMarkup}</div>
       </section>
     `;
   }).join("")}</div>${snapshot.canvas.captureError ? `<div style="${errorNoteStyle()}">${escapeHtml(snapshot.canvas.captureError)}</div>` : ""}`;
+}
+
+function attachPagePreviewBodies(
+  container: HTMLDivElement,
+  previews: VariantPagePreview[],
+): void {
+  for (const preview of previews) {
+    const slot = container.querySelector<HTMLDivElement>(
+      `[data-variant-page-preview-body-slot="${escapeAttributeValue(preview.variantName)}"]`,
+    );
+    if (!slot) {
+      continue;
+    }
+
+    slot.replaceChildren();
+    const body = document.createElement("div");
+    body.setAttribute("data-variant-page-preview-body", "true");
+    body.style.cssText = canvasPagePreviewBodyStyle(preview.width, preview.height);
+    body.append(...preview.nodes.map((node) => node.cloneNode(true)));
+    slot.appendChild(body);
+  }
 }
 
 function buildPagePreviewRequestKey(
@@ -1257,47 +1289,21 @@ async function ensurePageModePreviewCache(controller: VariantRuntimeController):
 
 async function waitForPaint(): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 async function capturePagePreview(variantName: string): Promise<VariantPagePreview> {
-  const documentCanvas = await toCanvas(document.body, {
-    backgroundColor: "#ffffff",
-    cacheBust: true,
-    pixelRatio: 1,
-    width: getDocumentCaptureWidth(),
-    height: getDocumentCaptureHeight(),
-    canvasWidth: getDocumentCaptureWidth(),
-    canvasHeight: getDocumentCaptureHeight(),
-    skipAutoScale: true,
-    filter: (node) => !(node instanceof HTMLElement && (
-      node.dataset.variantOverlayRoot === "true"
-      || node.dataset.variiantCanvasFullscreen === "true"
-    )),
-  });
-
-  const maxWidth = 420;
-  const maxHeight = 700;
-  const scale = Math.min(maxWidth / documentCanvas.width, maxHeight / documentCanvas.height, 1);
-  const width = Math.max(1, Math.round(documentCanvas.width * scale));
-  const height = Math.max(1, Math.round(documentCanvas.height * scale));
-  const previewCanvas = document.createElement("canvas");
-  previewCanvas.width = width;
-  previewCanvas.height = height;
-  const context = previewCanvas.getContext("2d");
-  if (!context) {
-    throw new Error("Canvas 2D context unavailable.");
-  }
-
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, width, height);
-  context.drawImage(documentCanvas, 0, 0, width, height);
+  const previewWidth = getDocumentCaptureWidth();
+  const previewHeight = getDocumentCaptureHeight();
+  const nodes = Array.from(document.body.children)
+    .filter((child): child is HTMLElement => child instanceof HTMLElement)
+    .filter((child) => child.dataset.variantOverlayRoot !== "true" && child.dataset.variiantCanvasFullscreen !== "true")
+    .map((child) => child.cloneNode(true) as HTMLElement);
 
   return {
     variantName,
-    dataUrl: previewCanvas.toDataURL("image/png"),
-    width,
-    height,
+    nodes,
+    width: previewWidth,
+    height: previewHeight,
   };
 }
 
@@ -1307,6 +1313,13 @@ function applyCanvasModeButtonStyle(button: HTMLButtonElement, active: boolean):
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function getCanvasGroupWidth(
+  representative: ReturnType<typeof getRepresentativeMountedInstance>,
+): number {
+  const preferredWidth = representative?.preferredWidth ?? representative?.width ?? 360;
+  return clamp(preferredWidth, 280, 1600);
 }
 
 function slugify(value: string): string {
@@ -1624,8 +1637,6 @@ function panelStyle(): string {
     "gap:8px",
     "width:100%",
     "background:rgba(255,255,255,0.98)",
-    "backdrop-filter:blur(16px)",
-    "box-shadow:0 18px 40px rgba(15,23,42,0.18)",
     "border:1px solid rgba(148,163,184,0.35)",
     "border-radius:16px",
     "padding:10px",
@@ -1759,7 +1770,6 @@ function progressStripStyle(): string {
     "border:1px solid rgba(203,213,225,0.95)",
     "border-radius:999px",
     "background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%)",
-    "box-shadow:inset 0 1px 0 rgba(255,255,255,0.98), inset 0 -3px 10px rgba(148,163,184,0.18)",
   ].join(";");
 }
 
@@ -1862,10 +1872,8 @@ function canvasChromeStyle(): string {
     "align-items:center",
     "gap:16px",
     "padding:18px 24px 14px",
-    "background:linear-gradient(180deg,rgba(255,255,255,0.96) 0%,rgba(255,255,255,0.86) 100%)",
-    "backdrop-filter:blur(14px)",
+    "background:rgba(255,255,255,0.94)",
     "border-bottom:1px solid rgba(148,163,184,0.22)",
-    "box-shadow:0 12px 32px rgba(15,23,42,0.06)",
   ].join(";");
 }
 
@@ -1886,7 +1894,6 @@ function canvasTabsStyle(): string {
     "padding:6px",
     "border-radius:999px",
     "background:rgba(226,232,240,0.92)",
-    "box-shadow:inset 0 1px 0 rgba(255,255,255,0.9)",
   ].join(";");
 }
 
@@ -1915,7 +1922,6 @@ function canvasModeButtonActiveStyle(): string {
     "font-size:13px",
     "font-weight:700",
     "cursor:pointer",
-    "box-shadow:0 6px 16px rgba(15,23,42,0.08)",
   ].join(";");
 }
 
@@ -2034,7 +2040,6 @@ function canvasGroupStyle(width: number): string {
     "border-radius:24px",
     "background:rgba(255,255,255,0.86)",
     "border:1px solid rgba(203,213,225,0.95)",
-    "box-shadow:0 24px 60px rgba(15,23,42,0.10)",
   ].join(";");
 }
 
@@ -2053,7 +2058,6 @@ function canvasGroupLabelStyle(): string {
     "font-size:11px",
     "font-weight:700",
     "letter-spacing:0.01em",
-    "box-shadow:0 12px 24px rgba(15,23,42,0.16)",
   ].join(";");
 }
 
@@ -2099,7 +2103,6 @@ function canvasVariantSlotStyle(height: number): string {
     "border-radius:18px",
     "background:#ffffff",
     "border:1px solid rgba(226,232,240,1)",
-    "box-shadow:inset 0 1px 0 rgba(255,255,255,1)",
     "padding:18px",
     "overflow:hidden",
   ].join(";");
@@ -2122,7 +2125,6 @@ function canvasPageTileStyle(): string {
     "border-radius:24px",
     "background:rgba(255,255,255,0.86)",
     "border:1px solid rgba(203,213,225,0.95)",
-    "box-shadow:0 24px 60px rgba(15,23,42,0.10)",
   ].join(";");
 }
 
@@ -2144,18 +2146,35 @@ function canvasPageFrameStyle(): string {
     "min-height:700px",
     "border-radius:20px",
     "background:#e2e8f0",
-    "padding:18px",
+    "padding:12px",
     "overflow:hidden",
   ].join(";");
 }
 
-function canvasPageImageStyle(): string {
+function canvasPageContentStyle(width: number, height: number): string {
+  const scale = Math.min(396 / Math.max(width, 1), 676 / Math.max(height, 1), 1);
+  const scaledWidth = Math.max(1, Math.round(width * scale));
+  const scaledHeight = Math.max(1, Math.round(height * scale));
+  return [
+    `width:${width}px`,
+    `height:${height}px`,
+    `transform:scale(${scale})`,
+    "transform-origin:top left",
+    "overflow:hidden",
+    `margin-right:-${Math.max(0, width - scaledWidth)}px`,
+    `margin-bottom:-${Math.max(0, height - scaledHeight)}px`,
+    `min-width:${scaledWidth}px`,
+    `min-height:${scaledHeight}px`,
+  ].join(";");
+}
+
+function canvasPagePreviewBodyStyle(width: number, height: number): string {
   return [
     "display:block",
-    "width:100%",
-    "height:auto",
-    "border-radius:14px",
-    "box-shadow:0 18px 36px rgba(15,23,42,0.14)",
+    `width:${width}px`,
+    `height:${height}px`,
+    "background:#ffffff",
+    "overflow:hidden",
     "pointer-events:none",
     "user-select:none",
   ].join(";");

@@ -224,6 +224,7 @@ describe("variant runtime controller", () => {
 
     controller.actions.updateMountedInstance("instance-a", {
       width: 320,
+      preferredWidth: 640,
       height: 160,
       isVisible: true,
     });
@@ -233,6 +234,7 @@ describe("variant runtime controller", () => {
 
     controller.actions.updateMountedInstance("instance-a", {
       width: 320,
+      preferredWidth: 640,
       height: 160,
       isVisible: true,
     });

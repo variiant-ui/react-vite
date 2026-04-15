@@ -160,35 +160,27 @@ describe("variant runtime proxy", () => {
     expect(document.querySelector('[data-variant-canvas-group-source="src/components/NotMounted.tsx"]')).toBeNull();
   });
 
-  it("captures page previews for the current target component and restores the live selection afterwards", async () => {
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({
-      fillStyle: "#ffffff",
-      fillRect: vi.fn(),
-      drawImage: vi.fn(),
-    } as unknown as CanvasRenderingContext2D));
-    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockImplementation(() => "data:image/png;base64,page-preview");
-    vi.mocked(toCanvas).mockImplementation(async () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 1200;
-      canvas.height = 900;
-      return canvas;
-    });
-
+  it("renders page mode as cloned DOM previews and restores the live selection afterwards", async () => {
     const MatrixCard = createVariantProxy({
       sourceId: "src/components/MatrixCard.tsx",
       displayName: "Matrix Card",
       selected: "source",
       variants: {
         source: function MatrixSource() {
-          return <div>Matrix source</div>;
+          return <section data-testid="matrix-card-variant">Matrix source</section>;
         },
         calm: function MatrixCalm() {
-          return <div>Matrix calm</div>;
+          return <section data-testid="matrix-card-variant">Matrix calm</section>;
         },
       },
     });
 
-    render(<MatrixCard />);
+    render(
+      <main data-testid="dashboard-page">
+        <h1>Dashboard shell</h1>
+        <MatrixCard />
+      </main>,
+    );
     installVariantOverlay();
 
     window.dispatchEvent(
@@ -218,12 +210,93 @@ describe("variant runtime proxy", () => {
     fireEvent.click(await screen.findByText("Pages"));
 
     await waitFor(() => {
-      expect(toCanvas).toHaveBeenCalledTimes(2);
+      expect(getVariantRuntimeState().canvas.captureState).toBe("idle");
+      expect(
+        document.querySelector('[data-variant-page-preview="source"] [data-variant-page-preview-body="true"]'),
+      ).not.toBeNull();
+      expect(
+        document.querySelector('[data-variant-page-preview="calm"] [data-variant-page-preview-body="true"]'),
+      ).not.toBeNull();
     });
 
+    expect(vi.mocked(toCanvas)).not.toHaveBeenCalled();
     expect(getVariantRuntimeState().selections["src/components/MatrixCard.tsx"]).toBe("calm");
-    expect(screen.getByText("Matrix calm")).toBeInTheDocument();
-    expect(document.querySelectorAll('img[alt="source page preview"], img[alt="calm page preview"]').length).toBe(2);
+    expect(screen.getAllByText("Matrix calm").length).toBeGreaterThan(0);
+
+    const sourcePreview = document.querySelector('[data-variant-page-preview="source"]');
+    const calmPreview = document.querySelector('[data-variant-page-preview="calm"]');
+    expect(sourcePreview?.textContent).toContain("Dashboard shell");
+    expect(sourcePreview?.textContent).toContain("Matrix source");
+    expect(calmPreview?.textContent).toContain("Dashboard shell");
+    expect(calmPreview?.textContent).toContain("Matrix calm");
+    expect(calmPreview?.querySelector('[data-testid="dashboard-page"]')).not.toBeNull();
+    expect(document.querySelectorAll('img[alt="source page preview"], img[alt="calm page preview"]').length).toBe(0);
+  });
+
+  it("uses inferred parent width for wide component groups in components mode", async () => {
+    const WidePanel = createVariantProxy({
+      sourceId: "src/components/WidePanel.tsx",
+      displayName: "Wide Panel",
+      selected: "source",
+      variants: {
+        source: function WidePanelSource() {
+          return <section data-testid="wide-panel">Wide panel source</section>;
+        },
+        editorial: function WidePanelEditorial() {
+          return <section data-testid="wide-panel">Wide panel editorial</section>;
+        },
+      },
+    });
+
+    render(
+      <div data-testid="wide-shell">
+        <WidePanel />
+      </div>,
+    );
+    installVariantOverlay();
+
+    const shell = await screen.findByTestId("wide-shell");
+    const panel = await screen.findByTestId("wide-panel");
+    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({
+      width: 1180,
+      height: 420,
+      left: 0,
+      top: 0,
+      right: 1180,
+      bottom: 420,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
+      width: 1080,
+      height: 280,
+      left: 0,
+      top: 0,
+      right: 1080,
+      bottom: 280,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    window.dispatchEvent(new Event("resize"));
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ",",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    await waitFor(() => {
+      const group = document.querySelector(
+        '[data-variant-canvas-group-source="src/components/WidePanel.tsx"]',
+      ) as HTMLElement | null;
+      expect(group).not.toBeNull();
+      expect(group?.getAttribute("style")).toContain("width:1180px");
+    });
   });
 
   it("supports global component cycling with overlay open or closed", () => {

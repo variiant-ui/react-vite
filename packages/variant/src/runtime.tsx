@@ -76,6 +76,7 @@ export function createVariantProxy<Props extends object>({
     const boundaryRef = useRef<HTMLSpanElement | null>(null);
     const lastMeasurementRef = useRef<{
       width: number | null;
+      preferredWidth: number | null;
       height: number | null;
       isVisible: boolean;
     } | null>(null);
@@ -124,6 +125,7 @@ export function createVariantProxy<Props extends object>({
         const measurement = measureRenderableBoundary(element);
         const nextMeasurement = {
           width: measurement?.width ?? null,
+          preferredWidth: measurement?.preferredWidth ?? null,
           height: measurement?.height ?? null,
           isVisible: Boolean(measurement && measurement.width > 0 && measurement.height > 0),
         };
@@ -132,6 +134,7 @@ export function createVariantProxy<Props extends object>({
         if (
           previousMeasurement
           && previousMeasurement.width === nextMeasurement.width
+          && previousMeasurement.preferredWidth === nextMeasurement.preferredWidth
           && previousMeasurement.height === nextMeasurement.height
           && previousMeasurement.isVisible === nextMeasurement.isVisible
         ) {
@@ -164,7 +167,7 @@ export function createVariantProxy<Props extends object>({
     const shouldRenderCanvasPreviews =
       !isCanvasPreview
       && portalRefreshVersion >= 0
-      snapshot.canvasOpen
+      && snapshot.canvasOpen
       && snapshot.canvas.mode === "components"
       && representativeInstance?.instanceId === instanceId;
 
@@ -233,11 +236,13 @@ export function createVariantProxy<Props extends object>({
 
 function measureRenderableBoundary(
   boundary: HTMLElement,
-): { width: number; height: number } | null {
+): { width: number; preferredWidth: number; height: number } | null {
   const boundaryRect = boundary.getBoundingClientRect();
   if (boundaryRect.width >= 1 && boundaryRect.height >= 1) {
+    const width = Math.max(1, Math.round(boundaryRect.width));
     return {
-      width: Math.max(1, Math.round(boundaryRect.width)),
+      width,
+      preferredWidth: inferPreferredWidth(boundary, width),
       height: Math.max(1, Math.round(boundaryRect.height)),
     };
   }
@@ -254,11 +259,48 @@ function measureRenderableBoundary(
   const top = Math.min(...descendantRects.map((rect) => rect.top));
   const right = Math.max(...descendantRects.map((rect) => rect.right));
   const bottom = Math.max(...descendantRects.map((rect) => rect.bottom));
+  const width = Math.max(1, Math.round(right - left));
+  const primaryElement = descendantRects
+    .map((rect, index) => ({
+      index,
+      area: rect.width * rect.height,
+      width: rect.width,
+    }))
+    .sort((leftEntry, rightEntry) => rightEntry.area - leftEntry.area || rightEntry.width - leftEntry.width)[0];
+  const sourceElement = primaryElement
+    ? Array.from(boundary.querySelectorAll<HTMLElement>("*"))[primaryElement.index] ?? boundary
+    : boundary;
 
   return {
-    width: Math.max(1, Math.round(right - left)),
+    width,
+    preferredWidth: inferPreferredWidth(sourceElement, width),
     height: Math.max(1, Math.round(bottom - top)),
   };
+}
+
+function inferPreferredWidth(element: HTMLElement, measuredWidth: number): number {
+  const viewportWidth = Math.max(window.innerWidth || 0, measuredWidth);
+  let preferredWidth = measuredWidth;
+  let current: HTMLElement | null = element;
+
+  for (let depth = 0; depth < 6 && current?.parentElement; depth += 1) {
+    current = current.parentElement;
+    const parentWidth = Math.round(current.getBoundingClientRect().width);
+    if (parentWidth < measuredWidth || parentWidth <= 0) {
+      continue;
+    }
+
+    if (measuredWidth >= parentWidth * 0.68) {
+      preferredWidth = Math.max(preferredWidth, parentWidth);
+    }
+
+    if (parentWidth >= viewportWidth * 0.9) {
+      preferredWidth = Math.max(preferredWidth, parentWidth);
+      break;
+    }
+  }
+
+  return Math.max(measuredWidth, Math.round(Math.min(preferredWidth, 1600)));
 }
 
 function canvasPreviewStyle(): React.CSSProperties {

@@ -50,6 +50,7 @@ export type MountedVariantInstance = {
   sourceId: string;
   displayName: string;
   width: number | null;
+  preferredWidth: number | null;
   height: number | null;
   mountedAt: number;
   isVisible: boolean;
@@ -157,7 +158,7 @@ export type VariantRuntimeController = {
     }) => void;
     updateMountedInstance: (
       instanceId: string,
-      patch: Partial<Pick<MountedVariantInstance, "width" | "height" | "isVisible">>,
+      patch: Partial<Pick<MountedVariantInstance, "width" | "preferredWidth" | "height" | "isVisible">>,
     ) => void;
     unregisterMountedInstance: (instanceId: string) => void;
     configureShortcuts: (overrides?: Partial<VariantShortcutConfig>) => void;
@@ -251,6 +252,7 @@ function mountedInstanceEquals(
     && left.sourceId === right.sourceId
     && left.displayName === right.displayName
     && left.width === right.width
+    && left.preferredWidth === right.preferredWidth
     && left.height === right.height
     && left.mountedAt === right.mountedAt
     && left.isVisible === right.isVisible
@@ -607,6 +609,7 @@ export function createVariantRuntimeController(options: {
           sourceId: instance.sourceId,
           displayName: instance.displayName,
           width: existing?.width ?? null,
+          preferredWidth: existing?.preferredWidth ?? null,
           height: existing?.height ?? null,
           isVisible: existing?.isVisible ?? false,
           mountedAt: existing?.mountedAt ?? Date.now(),
