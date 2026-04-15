@@ -141,6 +141,72 @@ describe("variant runtime proxy", () => {
     expect(viewport.getAttribute("style")).toContain("user-select: none");
   });
 
+  it("zooms toward the cursor position and moves the dot field with the canvas", async () => {
+    const DashboardCard = createVariantProxy({
+      sourceId: "src/pages/home/dashboard.tsx",
+      displayName: "Home Dashboard",
+      selected: "source",
+      variants: {
+        source: function DashboardSource() {
+          return <div>Dashboard source</div>;
+        },
+        editorial: function DashboardEditorial() {
+          return <div>Dashboard editorial</div>;
+        },
+      },
+    });
+
+    render(<DashboardCard />);
+    installVariantOverlay();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ",",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    const viewport = await waitFor(() => {
+      const element = document.querySelector('[data-variant-canvas-viewport="true"]') as HTMLDivElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    const root = document.querySelector('[data-variiant-canvas-fullscreen="true"]') as HTMLDivElement | null;
+    expect(root).not.toBeNull();
+
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue({
+      width: 1200,
+      height: 800,
+      left: 100,
+      top: 50,
+      right: 1300,
+      bottom: 850,
+      x: 100,
+      y: 50,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    viewport.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: -160,
+      clientX: 700,
+      clientY: 450,
+      bubbles: true,
+      cancelable: true,
+    }));
+
+    await waitFor(() => {
+      const camera = getVariantRuntimeState().canvas.camera;
+      expect(camera.zoom).toBeGreaterThan(1);
+      expect(camera.x).toBeLessThan(0);
+      expect(camera.y).toBeLessThan(0);
+    });
+
+    expect(root?.style.backgroundPosition).not.toBe("0px 0px");
+    expect(root?.style.backgroundSize).not.toBe("24px 24px");
+  });
+
   it("shows only currently mounted component families in components mode and labels groups by source file", async () => {
     const DashboardCard = createVariantProxy({
       sourceId: "src/pages/home/dashboard.tsx",
@@ -203,9 +269,8 @@ describe("variant runtime proxy", () => {
       expect(document.querySelectorAll('[data-variant-canvas-group-source="src/pages/home/dashboard.tsx"]').length).toBe(1);
     });
 
-    expect(document.body.textContent).toContain("src/pages/home/dashboard.tsx");
-    expect(document.body.textContent).toContain("src/components/MatrixCard.tsx");
-    expect(document.body.textContent).toContain("2 mounts");
+    expect(document.body.textContent).toContain("dashboard.tsx");
+    expect(document.body.textContent).toContain("MatrixCard.tsx");
     expect(document.querySelector('[data-variant-canvas-group-source="src/components/NotMounted.tsx"]')).toBeNull();
   });
 

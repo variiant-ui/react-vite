@@ -868,6 +868,9 @@ function renderCanvas(
 
   dom.root.style.display = "flex";
   dom.root.setAttribute("data-variiant-canvas-fullscreen", "true");
+  dom.root.style.setProperty("--variiant-canvas-zoom", String(snapshot.canvas.camera.zoom));
+  dom.root.style.backgroundPosition = `${snapshot.canvas.camera.x}px ${snapshot.canvas.camera.y}px`;
+  dom.root.style.backgroundSize = `${Math.max(8, Math.round(24 * snapshot.canvas.camera.zoom))}px ${Math.max(8, Math.round(24 * snapshot.canvas.camera.zoom))}px`;
   dom.title.textContent = snapshot.canvas.mode === "components"
     ? "Canvas Comparison"
     : "Page Comparison";
@@ -1042,6 +1045,7 @@ function getOrCreateCanvasDomState(
     dom.drag.pointerId = event.pointerId;
     dom.drag.lastX = event.clientX;
     dom.drag.lastY = event.clientY;
+    viewport.style.cursor = "grabbing";
     viewport.setPointerCapture(event.pointerId);
   });
 
@@ -1064,6 +1068,7 @@ function getOrCreateCanvasDomState(
 
     dom.drag.active = false;
     dom.drag.pointerId = null;
+    viewport.style.cursor = "grab";
     if (viewport.hasPointerCapture(event.pointerId)) {
       viewport.releasePointerCapture(event.pointerId);
     }
@@ -1079,15 +1084,24 @@ function getOrCreateCanvasDomState(
   });
   viewport.addEventListener("wheel", (event) => {
     event.preventDefault();
+    const viewportRect = viewport.getBoundingClientRect();
     const currentZoom = controller.getSnapshot().canvas.camera.zoom;
-    const zoomDelta = event.deltaY < 0 ? 0.12 : -0.12;
-    const nextZoom = clamp(currentZoom + zoomDelta, 0.25, 2.5);
+    const zoomFactor = Math.exp(-event.deltaY * 0.0015);
+    const nextZoom = clamp(currentZoom * zoomFactor, 0.25, 2.5);
     if (nextZoom === currentZoom) {
       return;
     }
 
+    const currentCamera = controller.getSnapshot().canvas.camera;
+    const localX = event.clientX - viewportRect.left;
+    const localY = event.clientY - viewportRect.top;
+    const worldX = (localX - currentCamera.x) / currentZoom;
+    const worldY = (localY - currentCamera.y) / currentZoom;
+
     controller.actions.setCanvasCamera({
-      ...controller.getSnapshot().canvas.camera,
+      ...currentCamera,
+      x: localX - worldX * nextZoom,
+      y: localY - worldY * nextZoom,
       zoom: nextZoom,
     });
   }, { passive: false });
@@ -1142,11 +1156,9 @@ function buildComponentsCanvasMarkup(
     const representative = getRepresentativeMountedInstance(snapshot, component.sourceId);
     const width = getCanvasGroupWidth(representative);
     const slotHeight = clamp(representative?.height ?? 180, 120, 520);
-    const activeVariant = snapshot.effectiveSelections[component.sourceId] ?? component.selected;
     return `
       <section data-variant-canvas-group-source="${escapeHtml(component.sourceId)}" style="${canvasGroupStyle(width)}">
-        <div style="${canvasGroupLabelStyle()}">${escapeHtml(component.sourceId)}</div>
-        <div style="${canvasGroupMetaStyle()}">${escapeHtml(component.displayName)}${component.mountedCount > 1 ? ` • ${component.mountedCount} mounts` : ""} • Live: ${escapeHtml(activeVariant)}</div>
+        <div style="${canvasGroupLabelStyle()}">${escapeHtml(formatCanvasGroupLabel(component.sourceId))}</div>
         <div style="${canvasVariantStackStyle()}">
           ${component.variantNames.map((variantName) => `
             <article style="${canvasVariantTileStyle()}">
@@ -1187,8 +1199,8 @@ function buildPagesCanvasMarkup(
       : `<div style="${canvasPagePlaceholderStyle()}">${snapshot.canvas.captureState === "error" ? "Capture failed" : "Capturing preview..."}</div>`;
     return `
       <section data-variant-page-preview="${escapeHtml(variantName)}" style="${canvasPageTileStyle()}">
-        <div style="${canvasGroupLabelStyle()}">${escapeHtml(targetComponent.sourceId)}</div>
-        <div style="${canvasPageHeaderStyle()}">${escapeHtml(targetComponent.displayName)} • ${escapeHtml(variantName)}</div>
+        <div style="${canvasGroupLabelStyle()}">${escapeHtml(formatCanvasGroupLabel(targetComponent.sourceId))}</div>
+        <div style="${canvasVariantTileHeaderStyle()}">${escapeHtml(variantName)}</div>
         <div style="${canvasPageFrameStyle()}">${pageMarkup}</div>
       </section>
     `;
@@ -1327,6 +1339,16 @@ function getCanvasGroupWidth(
 ): number {
   const preferredWidth = representative?.preferredWidth ?? representative?.width ?? 360;
   return clamp(preferredWidth, 280, 1600);
+}
+
+function formatCanvasGroupLabel(sourceId: string): string {
+  const [filePath, namedExport] = sourceId.split("#");
+  const fileName = filePath?.split("/").filter(Boolean).at(-1) ?? sourceId;
+  if (!namedExport) {
+    return fileName;
+  }
+
+  return `${fileName} -> ${namedExport}`;
 }
 
 function slugify(value: string): string {
@@ -1864,7 +1886,7 @@ function canvasRootStyle(): string {
     "z-index:9998",
     "display:flex",
     "flex-direction:column",
-    "background:radial-gradient(circle at 1px 1px, rgba(148,163,184,0.35) 1px, transparent 0)",
+    "background-image:radial-gradient(circle at 1px 1px, rgba(148,163,184,0.35) 1px, transparent 0)",
     "background-size:24px 24px",
     "background-color:#f8fafc",
     "color:#0f172a",
@@ -2049,38 +2071,30 @@ function canvasGroupStyle(width: number): string {
   return [
     "position:relative",
     `width:${width}px`,
-    "padding:36px 18px 18px",
-    "border-radius:24px",
-    "background:rgba(255,255,255,0.86)",
-    "border:1px solid rgba(203,213,225,0.95)",
+    "padding:18px 14px 14px",
+    "border:1px solid rgba(203,213,225,0.9)",
+    "background:rgba(255,255,255,0.72)",
   ].join(";");
 }
 
 function canvasGroupLabelStyle(): string {
   return [
     "position:absolute",
-    "left:18px",
-    "top:-14px",
+    "left:10px",
+    "top:-12px",
     "display:inline-flex",
     "align-items:center",
-    "padding:0 10px",
-    "height:28px",
-    "border-radius:999px",
-    "background:#0f172a",
-    "color:#f8fafc",
-    "font-size:11px",
-    "font-weight:700",
-    "letter-spacing:0.01em",
-  ].join(";");
-}
-
-function canvasGroupMetaStyle(): string {
-  return [
-    "margin-bottom:14px",
-    "font-size:12px",
+    "padding:2px 8px",
+    "border:1px solid rgba(203,213,225,0.9)",
+    "background:rgba(248,250,252,0.96)",
+    "color:#334155",
+    "font-size:14px",
     "font-weight:600",
-    "line-height:1.5",
-    "color:#475569",
+    "line-height:1.2",
+    "white-space:nowrap",
+    "transform-origin:top left",
+    "transform:scale(calc(1 / var(--variiant-canvas-zoom, 1)))",
+    "pointer-events:none",
   ].join(";");
 }
 
@@ -2096,27 +2110,25 @@ function canvasVariantTileStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:10px",
+    "gap:8px",
   ].join(";");
 }
 
 function canvasVariantTileHeaderStyle(): string {
   return [
     "font-size:12px",
-    "font-weight:700",
-    "text-transform:uppercase",
-    "letter-spacing:0.06em",
+    "font-weight:600",
     "color:#64748b",
+    "pointer-events:none",
   ].join(";");
 }
 
 function canvasVariantSlotStyle(height: number): string {
   return [
     `min-height:${height}px`,
-    "border-radius:18px",
-    "background:#ffffff",
     "border:1px solid rgba(226,232,240,1)",
-    "padding:18px",
+    "background:#ffffff",
+    "padding:14px",
     "overflow:hidden",
   ].join(";");
 }
@@ -2134,20 +2146,9 @@ function canvasPageTileStyle(): string {
   return [
     "position:relative",
     "width:420px",
-    "padding:36px 18px 18px",
-    "border-radius:24px",
-    "background:rgba(255,255,255,0.86)",
-    "border:1px solid rgba(203,213,225,0.95)",
-  ].join(";");
-}
-
-function canvasPageHeaderStyle(): string {
-  return [
-    "margin-bottom:14px",
-    "font-size:12px",
-    "font-weight:700",
-    "line-height:1.5",
-    "color:#475569",
+    "padding:18px 14px 14px",
+    "border:1px solid rgba(203,213,225,0.9)",
+    "background:rgba(255,255,255,0.72)",
   ].join(";");
 }
 
@@ -2157,8 +2158,8 @@ function canvasPageFrameStyle(): string {
     "align-items:flex-start",
     "justify-content:center",
     "min-height:700px",
-    "border-radius:20px",
-    "background:#e2e8f0",
+    "border:1px solid rgba(226,232,240,1)",
+    "background:#ffffff",
     "padding:12px",
     "overflow:hidden",
   ].join(";");
