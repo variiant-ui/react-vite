@@ -16,7 +16,13 @@ import {
   getVariantRuntimeState,
   installVariantOverlay,
 } from "../runtime";
-import { loadVariantAppConfig, shouldReloadVariantState, variantPlugin } from "../plugin";
+import { getVariantRuntimeController } from "../runtime-singleton";
+import {
+  loadVariantAppConfig,
+  normalizeChangedVariantImports,
+  shouldReloadVariantState,
+  variantPlugin,
+} from "../plugin";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -307,9 +313,14 @@ describe("variant runtime proxy", () => {
     );
 
     const activeChoice = await waitFor(() => {
-      const select = document.querySelector('[data-variant-active-choice="true"]') as HTMLSelectElement | null;
-      expect(select).not.toBeNull();
-      return select!;
+      const selects = Array.from(
+        document.querySelectorAll('[data-variant-active-choice="true"]'),
+      ) as HTMLSelectElement[];
+      const matchingSelect = selects.find((select) =>
+        !select.disabled && Array.from(select.options).some((option) => option.value === "calm")
+      );
+      expect(matchingSelect).toBeDefined();
+      return matchingSelect!;
     });
 
     fireEvent.change(activeChoice, {
@@ -319,26 +330,31 @@ describe("variant runtime proxy", () => {
     });
     await screen.findByText("Matrix calm");
 
-    const openCanvasButton = await screen.findByText("Open Canvas");
-    fireEvent.click(openCanvasButton);
-    fireEvent.click(await screen.findByText("Pages"));
+    const controller = getVariantRuntimeController();
+    controller.actions.openCanvas();
+    controller.actions.setCanvasMode("pages");
+
+    const getLatestPagePreview = (variantName: string): HTMLElement | null => {
+      const previews = Array.from(
+        document.querySelectorAll(`[data-variant-page-preview="${variantName}"]`),
+      ) as HTMLElement[];
+      return previews.at(-1) ?? null;
+    };
 
     await waitFor(() => {
       expect(getVariantRuntimeState().canvas.captureState).toBe("idle");
-      expect(
-        document.querySelector('[data-variant-page-preview="source"] [data-variant-page-preview-body="true"]'),
-      ).not.toBeNull();
-      expect(
-        document.querySelector('[data-variant-page-preview="calm"] [data-variant-page-preview-body="true"]'),
-      ).not.toBeNull();
+      expect(getLatestPagePreview("source")).not.toBeNull();
+      expect(getLatestPagePreview("calm")).not.toBeNull();
+      expect(getLatestPagePreview("source")?.querySelector('[data-variant-page-preview-body="true"]')).not.toBeNull();
+      expect(getLatestPagePreview("calm")?.querySelector('[data-variant-page-preview-body="true"]')).not.toBeNull();
     });
 
     expect(vi.mocked(toCanvas)).not.toHaveBeenCalled();
     expect(getVariantRuntimeState().selections["src/components/MatrixCard.tsx"]).toBe("calm");
     expect(screen.getAllByText("Matrix calm").length).toBeGreaterThan(0);
 
-    const sourcePreview = document.querySelector('[data-variant-page-preview="source"]');
-    const calmPreview = document.querySelector('[data-variant-page-preview="calm"]');
+    const sourcePreview = getLatestPagePreview("source");
+    const calmPreview = getLatestPagePreview("calm");
     expect(sourcePreview?.textContent).toContain("Dashboard shell");
     expect(sourcePreview?.textContent).toContain("Matrix source");
     expect(calmPreview?.textContent).toContain("Dashboard shell");
@@ -670,7 +686,7 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findByText(/Agent: codex exec --json/i);
+    await screen.findAllByText(/Agent: codex exec --json/i);
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     prompt!.focus();
@@ -716,6 +732,131 @@ describe("variant runtime proxy", () => {
       expect(document.querySelector('[data-variant-agent-progress="true"]')).toBeNull();
       expect(document.querySelector('[data-variant-agent-prompt="true"]')).not.toBeNull();
       expect(document.querySelector('[data-variant-agent-run="true"]')).not.toBeNull();
+    });
+  });
+
+  it("surfaces Claude stream-json partial messages in the progress strip", async () => {
+    let releaseCompletion: (() => void) | null = null;
+    const completionReady = new Promise<void>((resolve) => {
+      releaseCompletion = resolve;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/__variiant/config")) {
+        return new Response(JSON.stringify({
+          token: "test-token",
+          agent: {
+            enabled: true,
+            commandLabel: "claude -p --output-format stream-json",
+            message: null,
+            streaming: "text",
+            supportsImages: false,
+          },
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+
+      expect(url.endsWith("/__variiant/agent/run")).toBe(true);
+      expect(init?.headers).toMatchObject({
+        "Content-Type": "application/json",
+        "X-Variiant-Token": "test-token",
+      });
+
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(streamController) {
+          streamController.enqueue(encoder.encode(`${JSON.stringify({
+            type: "stdout",
+            text: JSON.stringify({
+              type: "stream_event",
+              event: {
+                delta: {
+                  type: "text_delta",
+                  text: "Reading ",
+                },
+              },
+            }),
+          })}\n`));
+          streamController.enqueue(encoder.encode(`${JSON.stringify({
+            type: "stdout",
+            text: JSON.stringify({
+              type: "stream_event",
+              event: {
+                delta: {
+                  type: "text_delta",
+                  text: "the component now.",
+                },
+              },
+            }),
+          })}\n`));
+
+          void (async () => {
+            await completionReady;
+            streamController.enqueue(encoder.encode(`${JSON.stringify({
+              type: "done",
+              sessionId: "session-claude",
+              exitCode: 0,
+              changedFiles: [],
+            })}\n`));
+            streamController.close();
+          })();
+        },
+      });
+
+      return new Response(body, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/x-ndjson",
+        },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const OrdersTable = createVariantProxy({
+      sourceId: "src/components/OrdersTable.tsx",
+      displayName: "Orders Table",
+      selected: "source",
+      variants: {
+        source: function SourceVariant() {
+          return <div>Source table</div>;
+        },
+      },
+    });
+
+    render(<OrdersTable />);
+    installVariantOverlay();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ".",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    await screen.findByText(/Agent: claude -p --output-format stream-json/i);
+    const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
+    expect(prompt).not.toBeNull();
+    fireEvent.input(prompt!, {
+      target: {
+        value: "Create a new variant.",
+      },
+    });
+
+    const runButton = document.querySelector('[data-variant-agent-run="true"]') as HTMLButtonElement | null;
+    expect(runButton).not.toBeNull();
+    fireEvent.click(runButton!);
+
+    await screen.findByText("Reading the component now.");
+    releaseCompletion?.();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -809,7 +950,7 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findByText(/Agent: codex exec --json/i);
+    await screen.findAllByText(/Agent: codex exec --json/i);
     const checkbox = document.querySelector(
       '[data-variant-agent-attach-screenshot="true"]',
     ) as HTMLInputElement | null;
@@ -957,7 +1098,7 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findByText(/Agent: codex exec --json/i);
+    await screen.findAllByText(/Agent: codex exec --json/i);
     const checkbox = document.querySelector(
       '[data-variant-agent-attach-screenshot="true"]',
     ) as HTMLInputElement | null;
@@ -1104,7 +1245,7 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findByText(/Agent: codex exec --json/i);
+    await screen.findAllByText(/Agent: codex exec --json/i);
     const sourcePicker = document.querySelector('[data-variant-active-source="true"]') as HTMLSelectElement | null;
     expect(sourcePicker).not.toBeNull();
     fireEvent.change(sourcePicker!, {
@@ -1179,6 +1320,8 @@ describe("variant plugin", () => {
       JSON.stringify({
         "agent.command": ["codex", "exec"],
         "agent.streaming": "text",
+        "agent.refresh": "full-reload",
+        "agent.logFile": true,
         "agent.image.cliFlag": "--image",
       }, null, 2),
     );
@@ -1187,11 +1330,85 @@ describe("variant plugin", () => {
       agent: {
         command: ["codex", "exec"],
         streaming: "text",
+        refresh: "full-reload",
+        logFile: true,
         image: {
           cliFlag: "--image",
         },
       },
     });
+  });
+
+  it("injects the dev overlay bootstrap even before any variants exist", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-html-"));
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+
+    const transformed = plugin.transformIndexHtml?.(
+      "<html><body><div id='root'></div></body></html>",
+      {
+        server: {} as never,
+        path: "/",
+        filename: path.join(tempRoot, "index.html"),
+      } as never,
+    );
+
+    expect(transformed).toEqual({
+      html: "<html><body><div id='root'></div></body></html>",
+      tags: [
+        expect.objectContaining({
+          tag: "script",
+          injectTo: "body",
+          attrs: expect.objectContaining({
+            type: "module",
+            "data-variiant-dev-bootstrap": "true",
+            src: "/@id/__x00__virtual:variiant/dev-bootstrap",
+          }),
+        }),
+      ],
+    });
+
+    const buildTransformed = plugin.transformIndexHtml?.(
+      "<html><body><div id='root'></div></body></html>",
+      {
+        bundle: {} as never,
+        path: "/",
+        filename: path.join(tempRoot, "index.html"),
+      } as never,
+    );
+
+    expect(buildTransformed).toBeUndefined();
+  });
+
+  it("serves the dev overlay bootstrap as a virtual module", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-bootstrap-"));
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+
+    const resolved = await plugin.resolveId?.call(
+      {
+        resolve: async () => null,
+      } as never,
+      "virtual:variiant/dev-bootstrap",
+      undefined,
+      {},
+    );
+
+    expect(String(resolved)).toBe("\0virtual:variiant/dev-bootstrap");
+
+    const loaded = await plugin.load?.call(
+      {
+        meta: { watchMode: true },
+      } as never,
+      String(resolved),
+    );
+
+    expect(String(loaded)).toContain('import { installVariantOverlay } from "@variiant-ui/react-vite/runtime";');
+    expect(String(loaded)).toContain("installVariantOverlay();");
   });
 
   it("builds a proxy module for a conventional default export target", async () => {
@@ -1300,6 +1517,285 @@ describe("variant plugin", () => {
 
     expect(String(productionLoaded)).toContain('export * from');
     expect(String(productionLoaded)).toContain('export * from');
+  });
+
+  it("ignores conventional helper files that do not default-export a variant", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-helper-ignore-"));
+    const sourcePath = path.join(tempRoot, "src", "components");
+    const variantsPath = path.join(
+      tempRoot,
+      ".variiant",
+      "variants",
+      "src",
+      "components",
+      "OrdersTable.tsx",
+      "default",
+    );
+    fs.mkdirSync(sourcePath, { recursive: true });
+    fs.mkdirSync(variantsPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(sourcePath, "OrdersTable.tsx"),
+      "export default function OrdersTable(){ return null; }",
+    );
+    fs.writeFileSync(
+      path.join(variantsPath, "editorial.tsx"),
+      "export default function Editorial(){ return null; }",
+    );
+    fs.writeFileSync(
+      path.join(variantsPath, "unifiedMetadataTab.tsx"),
+      "export function UnifiedMetadataTab(){ return null; }",
+    );
+
+    process.chdir(tempRoot);
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+
+    const resolved = await plugin.resolveId?.call(
+      {
+        resolve: async () => ({ id: path.join(tempRoot, "src", "components", "OrdersTable.tsx") }),
+      } as never,
+      "./components/OrdersTable",
+      path.join(tempRoot, "src", "App.tsx"),
+      {},
+    );
+
+    const loaded = await plugin.load?.call(
+      {
+        meta: { watchMode: true },
+      } as never,
+      String(resolved),
+    );
+
+    expect(String(loaded)).toContain('import DefaultEditorialVariant from');
+    expect(String(loaded)).not.toContain("unifiedMetadataTab.tsx");
+  });
+
+  it("resolves unresolved relative imports in variant files against the source module directory", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-relative-imports-"));
+    const sourcePath = path.join(tempRoot, "src", "components");
+    const variantsPath = path.join(
+      tempRoot,
+      ".variiant",
+      "variants",
+      "src",
+      "components",
+      "OrdersTable.tsx",
+      "default",
+    );
+    fs.mkdirSync(sourcePath, { recursive: true });
+    fs.mkdirSync(variantsPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(sourcePath, "OrdersTable.tsx"),
+      "export default function OrdersTable(){ return null; }",
+    );
+    fs.writeFileSync(
+      path.join(variantsPath, "compact.tsx"),
+      "export default function Compact(){ return null; }",
+    );
+
+    process.chdir(tempRoot);
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+
+    const resolveMock = vi.fn(async (source: string, importer?: string) => {
+      if (
+        source === "./ordersTableColumns"
+        && importer === path.join(variantsPath, "compact.tsx")
+      ) {
+        return null;
+      }
+
+      if (
+        source === path.join(sourcePath, "ordersTableColumns")
+        && importer === undefined
+      ) {
+        return { id: `${source}.tsx` };
+      }
+
+      return null;
+    });
+
+    const resolved = await plugin.resolveId?.call(
+      {
+        resolve: resolveMock,
+      } as never,
+      "./ordersTableColumns",
+      path.join(variantsPath, "compact.tsx"),
+      {},
+    );
+
+    expect(resolveMock).toHaveBeenNthCalledWith(
+      1,
+      "./ordersTableColumns",
+      path.join(variantsPath, "compact.tsx"),
+      expect.objectContaining({ skipSelf: true }),
+    );
+    expect(resolveMock).toHaveBeenNthCalledWith(
+      2,
+      path.join(sourcePath, "ordersTableColumns"),
+      undefined,
+      expect.objectContaining({ skipSelf: true }),
+    );
+    expect(resolved).toEqual({
+      id: `${path.join(sourcePath, "ordersTableColumns")}.tsx`,
+    });
+  });
+
+  it("keeps variant-local relative imports when they already resolve inside the variant workspace", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-variant-local-"));
+    const sourcePath = path.join(tempRoot, "src", "components");
+    const variantsPath = path.join(
+      tempRoot,
+      ".variiant",
+      "variants",
+      "src",
+      "components",
+      "OrdersTable.tsx",
+      "default",
+    );
+    fs.mkdirSync(sourcePath, { recursive: true });
+    fs.mkdirSync(variantsPath, { recursive: true });
+    fs.writeFileSync(path.join(sourcePath, "OrdersTable.tsx"), "export default function OrdersTable(){ return null; }");
+    fs.writeFileSync(path.join(variantsPath, "compact.tsx"), "export default function Compact(){ return null; }");
+    fs.writeFileSync(path.join(variantsPath, "shared.tsx"), "export const shared = true;");
+
+    process.chdir(tempRoot);
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+
+    const localResolvedPath = path.join(variantsPath, "shared.tsx");
+    const resolveMock = vi.fn(async (source: string, importer?: string) => {
+      if (source === "./shared" && importer === path.join(variantsPath, "compact.tsx")) {
+        return { id: localResolvedPath };
+      }
+
+      return null;
+    });
+
+    const resolved = await plugin.resolveId?.call(
+      {
+        resolve: resolveMock,
+      } as never,
+      "./shared",
+      path.join(variantsPath, "compact.tsx"),
+      {},
+    );
+
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+    expect(resolved).toEqual({
+      id: localResolvedPath,
+    });
+  });
+
+  it("normalizes overshooting helper imports back into the variants workspace", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-normalize-"));
+    const sharedHelpersPath = path.join(
+      tempRoot,
+      ".variiant",
+      "variants",
+      "unified-metadata-tab",
+    );
+    const offcanvasVariantPath = path.join(
+      tempRoot,
+      ".variiant",
+      "variants",
+      "src",
+      "components",
+      "documentDetail",
+      "documentDetailPanel.tsx",
+      "DocumentDetailPanelOffcanvas",
+    );
+    fs.mkdirSync(sharedHelpersPath, { recursive: true });
+    fs.mkdirSync(offcanvasVariantPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(sharedHelpersPath, "documentDetailPanelBodyV2.tsx"),
+      "export function DocumentDetailPanelBodyV2(){ return null; }",
+    );
+    fs.writeFileSync(
+      path.join(sharedHelpersPath, "documentDetailPanelTabsV2.tsx"),
+      "export function DocumentDetailPanelTabsV2(){ return null; }",
+    );
+    fs.writeFileSync(
+      path.join(offcanvasVariantPath, "unified-metadata-tab.tsx"),
+      [
+        'import { DocumentDetailPanelBodyV2 } from "../../../../../../unified-metadata-tab/documentDetailPanelBodyV2";',
+        'import { DocumentDetailPanelTabsV2 } from "../../../../../../unified-metadata-tab/documentDetailPanelTabsV2";',
+      ].join("\n"),
+    );
+
+    const normalizedFiles = normalizeChangedVariantImports(
+      tempRoot,
+      [
+        ".variiant/variants/src/components/documentDetail/documentDetailPanel.tsx/DocumentDetailPanelOffcanvas/unified-metadata-tab.tsx",
+      ],
+    );
+
+    expect(normalizedFiles).toEqual([
+      ".variiant/variants/src/components/documentDetail/documentDetailPanel.tsx/DocumentDetailPanelOffcanvas/unified-metadata-tab.tsx",
+    ]);
+    expect(
+      fs.readFileSync(path.join(offcanvasVariantPath, "unified-metadata-tab.tsx"), "utf8"),
+    ).toContain('../../../../../unified-metadata-tab/documentDetailPanelBodyV2');
+    expect(
+      fs.readFileSync(path.join(offcanvasVariantPath, "unified-metadata-tab.tsx"), "utf8"),
+    ).toContain('../../../../../unified-metadata-tab/documentDetailPanelTabsV2');
+  });
+
+  it("injects a default export when the variant file exports the matching named component", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-inject-default-"));
+    const variantDir = path.join(
+      tempRoot,
+      ".variiant",
+      "variants",
+      "src",
+      "components",
+      "Panel.tsx",
+      "PanelHeader",
+    );
+    fs.mkdirSync(variantDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(variantDir, "compact.tsx"),
+      "export function PanelHeader() { return null; }\n",
+    );
+
+    const normalizedFiles = normalizeChangedVariantImports(tempRoot, [
+      ".variiant/variants/src/components/Panel.tsx/PanelHeader/compact.tsx",
+    ]);
+
+    expect(normalizedFiles).toEqual([
+      ".variiant/variants/src/components/Panel.tsx/PanelHeader/compact.tsx",
+    ]);
+    const result = fs.readFileSync(path.join(variantDir, "compact.tsx"), "utf8");
+    expect(result).toContain("export default PanelHeader;");
+  });
+
+  it("does not inject a default export when the named export does not match the target", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-no-inject-"));
+    const variantDir = path.join(
+      tempRoot,
+      ".variiant",
+      "variants",
+      "src",
+      "components",
+      "Panel.tsx",
+      "PanelHeader",
+    );
+    fs.mkdirSync(variantDir, { recursive: true });
+    const original = "export function PanelBody() { return null; }\n";
+    fs.writeFileSync(path.join(variantDir, "compact.tsx"), original);
+
+    const normalizedFiles = normalizeChangedVariantImports(tempRoot, [
+      ".variiant/variants/src/components/Panel.tsx/PanelHeader/compact.tsx",
+    ]);
+
+    expect(normalizedFiles).toEqual([]);
+    expect(fs.readFileSync(path.join(variantDir, "compact.tsx"), "utf8")).toBe(original);
   });
 
   it("builds a proxy module for a conventional default export target from an index file", async () => {
@@ -1441,6 +1937,89 @@ describe("variant plugin", () => {
     expect(fs.readFileSync(path.join(tempRoot, ".variiant", ".gitignore"), "utf8")).toBe("sessions/\n");
   });
 
+  it("reloads affected variant proxies instead of full-reloading the page after an agent-created variant file", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-agent-hmr-"));
+    fs.mkdirSync(path.join(tempRoot, "src", "components"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempRoot, "src", "components", "OrdersTable.tsx"),
+      "export default function OrdersTable() { return null; }\n",
+    );
+    fs.writeFileSync(
+      path.join(tempRoot, "variiant.config.json"),
+      JSON.stringify({
+        agent: {
+          command: [
+            "node",
+            "-e",
+            [
+              "const fs=require('node:fs');",
+              "const path=require('node:path');",
+              "const target=path.join(process.cwd(),'.variiant','variants','src','components','OrdersTable.tsx','default','editorial.tsx');",
+              "fs.mkdirSync(path.dirname(target), { recursive: true });",
+              "fs.writeFileSync(target, 'export default function Editorial(){ return null; }\\n');",
+              "console.log('created variant file');",
+            ].join(""),
+          ],
+          streaming: "text",
+        },
+      }, null, 2),
+    );
+
+    let middleware:
+      | ((req: unknown, res: unknown, next: () => void) => void)
+      | undefined;
+    const fakeModule = { id: "virtual-orders-table" };
+    const reloadModule = vi.fn(async () => {});
+    const wsSend = vi.fn();
+
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+    plugin.configureServer?.({
+      watcher: {
+        add: vi.fn(),
+        on: vi.fn(),
+      },
+      moduleGraph: {
+        getModuleById: vi.fn(() => fakeModule),
+      },
+      reloadModule,
+      ws: {
+        send: wsSend,
+      },
+      middlewares: {
+        use(handler: (req: unknown, res: unknown, next: () => void) => void) {
+          middleware = handler;
+        },
+      },
+    } as never);
+
+    expect(middleware).toBeDefined();
+
+    const configResponse = await invokeMiddleware(middleware!, {
+      method: "GET",
+      url: "/__variiant/config",
+    });
+    const configPayload = JSON.parse(configResponse.body) as { token: string };
+
+    const runResponse = await invokeMiddleware(middleware!, {
+      method: "POST",
+      url: "/__variiant/agent/run",
+      headers: {
+        "x-variiant-token": configPayload.token,
+      },
+      body: JSON.stringify({
+        prompt: "Create a new variant.",
+      }),
+    });
+
+    expect(runResponse.statusCode).toBe(200);
+    expect(runResponse.body).toContain("created variant file");
+    expect(reloadModule).toHaveBeenCalledTimes(1);
+    expect(wsSend).not.toHaveBeenCalledWith({ type: "full-reload" });
+  });
+
   it("passes a saved screenshot to the configured agent CLI image flag", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-agent-image-"));
     const agentScriptPath = path.join(tempRoot, "agent-image.js");
@@ -1568,6 +2147,94 @@ describe("variant plugin", () => {
 
     expect(requestPayload.attachments?.[0]?.path).toMatch(/orders-table\.png$/);
     expect(requestPayload.attachments?.[0]?.dataUrl).toBeUndefined();
+  });
+
+  it("writes a per-session agent event log file when agent.logFile is enabled", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-agent-logfile-"));
+    fs.writeFileSync(
+      path.join(tempRoot, "variiant.config.json"),
+      JSON.stringify({
+        agent: {
+          command: [
+            "node",
+            "-e",
+            [
+              "process.stdout.write('step one\\n');",
+              "process.stderr.write('warn one\\n');",
+            ].join(""),
+          ],
+          streaming: "text",
+          logFile: true,
+        },
+      }, null, 2),
+    );
+
+    let middleware:
+      | ((req: unknown, res: unknown, next: () => void) => void)
+      | undefined;
+
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+    plugin.configureServer?.({
+      watcher: {
+        add: vi.fn(),
+        on: vi.fn(),
+      },
+      ws: {
+        send: vi.fn(),
+      },
+      middlewares: {
+        use(handler: (req: unknown, res: unknown, next: () => void) => void) {
+          middleware = handler;
+        },
+      },
+    } as never);
+
+    expect(middleware).toBeDefined();
+
+    const configResponse = await invokeMiddleware(middleware!, {
+      method: "GET",
+      url: "/__variiant/config",
+    });
+    const configPayload = JSON.parse(configResponse.body) as {
+      token: string;
+    };
+
+    const runResponse = await invokeMiddleware(middleware!, {
+      method: "POST",
+      url: "/__variiant/agent/run",
+      headers: {
+        "x-variiant-token": configPayload.token,
+      },
+      body: JSON.stringify({
+        prompt: "Log the agent output.",
+      }),
+    });
+
+    expect(runResponse.statusCode).toBe(200);
+    expect(runResponse.body).toContain('"eventLogPath":".variiant/sessions/');
+    expect(runResponse.body).toContain("step one");
+    expect(runResponse.body).toContain("warn one");
+
+    const sessionDirs = fs.readdirSync(path.join(tempRoot, ".variiant", "sessions"));
+    expect(sessionDirs).toHaveLength(1);
+
+    const eventLogPath = path.join(
+      tempRoot,
+      ".variiant",
+      "sessions",
+      sessionDirs[0]!,
+      "agent-events.ndjson",
+    );
+    expect(fs.existsSync(eventLogPath)).toBe(true);
+
+    const eventLog = fs.readFileSync(eventLogPath, "utf8");
+    expect(eventLog).toContain('"type":"session"');
+    expect(eventLog).toContain('"type":"stdout","text":"step one"');
+    expect(eventLog).toContain('"type":"stderr","text":"warn one"');
+    expect(eventLog).toContain('"type":"done"');
   });
 
   it("falls back to the legacy .variants directory when the canonical workspace is absent", async () => {

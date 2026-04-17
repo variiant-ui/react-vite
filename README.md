@@ -1,6 +1,6 @@
 # variiant-ui/react-vite
 
-`@variiant-ui/react-vite` is a React + Vite design-iteration package. It keeps exploratory component versions outside the main source tree, swaps them live in the browser during development, and ships only the selected implementation in production.
+`@variiant-ui/react-vite` is a Vite plugin that enables parallel React component explorations without modifying app source code. The app keeps importing components normally — the plugin detects variant files under `.variiant/variants/`, rewrites the import to a proxy at dev time, and ships only the selected implementation in production. The swap boundary lives in the toolchain, not in user source code. App imports never change.
 
 The public developer experience is intentionally one package:
 
@@ -20,12 +20,18 @@ Internally, the package is split so the business logic stays testable and decoup
 
 ## Install
 
+From the consuming app root:
+
 ```bash
 npm install @variiant-ui/react-vite
 npm exec variiant init
 ```
 
+`npm exec variiant init` is the default install flow after the package is installed locally in the app. If it detects local `codex`, `claude`, or `copilot` CLIs, it prompts you to choose which one to configure and writes the matching default command. Codex gets the `--image` screenshot flag automatically. If you prefer an npm script wrapper, add `"variiant": "variiant"` to the app's `package.json` and run `npm run variiant -- init`. Avoid `npx variiant init` for local proving or local file installs because `npx` can fall through to the npm registry instead of the app-local binary.
+
 ## Vite setup
+
+In the consuming app's `vite.config.ts`:
 
 ```ts
 import { defineConfig } from "vite";
@@ -36,6 +42,8 @@ export default defineConfig({
   plugins: [variantPlugin(), react()],
 });
 ```
+
+In development, the plugin bootstraps the transient overlay and keybindings even before `.variiant/variants/` exists. With no mounted variant boundaries yet, the floating bar still opens but the component list is empty until matching source components are present on the page.
 
 Your application imports stay unchanged:
 
@@ -66,6 +74,8 @@ The canonical variant workspace lives under `.variiant/variants/`. The source im
 
 - `default/<name>.tsx` overrides the module default export
 - `<NamedExport>/<name>.tsx` overrides a named export
+- only files that `export default` are registered as swappable runtime variants; non-default-exported files in those folders are treated as helper modules and ignored by the proxy registry
+- unresolved relative imports inside a variant file fall back to the original source module directory before failing, so copied source-relative imports keep working without client-app alias changes
 - the generated proxy exposes `source` plus all discovered variants to the runtime
 - production imports exactly one implementation for each variantable boundary
 
@@ -87,13 +97,15 @@ The fullscreen canvas has two modes:
 
 Development mode now includes an experimental local agent bridge behind a top-level `variiant.config.json`.
 
-Example:
+Example output when Codex is selected:
 
 ```json
 {
   "agent": {
     "command": ["codex", "exec", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check"],
     "streaming": "text",
+    "refresh": "hmr",
+    "logFile": true,
     "image": {
       "cliFlag": "--image"
     }
@@ -101,11 +113,11 @@ Example:
 }
 ```
 
-`npm exec variiant init` writes that file for you and creates `.variiant/.gitignore` with `sessions/` ignored. The preferred and only documented shape is nested JSON under `agent`. The loader still accepts legacy flat keys such as `"agent.command"` for compatibility, but `variiant init` always writes the nested shape.
+`npm exec variiant init` writes that file for you and creates `.variiant/.gitignore` with `sessions/` ignored. Run it from the consuming app root after install. The preferred and only documented shape is nested JSON under `agent`. The loader still accepts legacy flat keys such as `"agent.command"` for compatibility, but `variiant init` always writes the nested shape. Claude and Copilot presets write their own non-interactive command defaults; only Codex currently adds an explicit `agent.image.cliFlag`. The Claude preset now opts into `stream-json`, `--verbose`, and `--include-partial-messages` so the overlay can surface incremental thought text instead of only the final response.
 
-Use `npm exec` instead of `npx` in a local proving app. If the local package bin has not been linked into that app yet, `npx variiant` falls through to the npm registry and returns a 404.
+With that file present, the floating bar can send a prompt to the local coding agent, swap the prompt area into a compact latest-message progress strip while the run is active, and let Vite reload the changed files in place. `agent.refresh` defaults to `"hmr"`, which reloads only affected variiant proxy modules after an agent-created variant change instead of refreshing the whole page. Set `"refresh": "full-reload"` if the host app needs the older full-page behavior. If you do not want to put that in `variiant.config.json`, you can also force the behavior in `vite.config.ts` with `variantPlugin({ agentRefresh: "full-reload" })`.
 
-With that file present, the floating bar can send a prompt to the local coding agent, swap the prompt area into a compact latest-message progress strip while the run is active, and let Vite reload the changed files in place. When `agent.image.cliFlag` is configured, the overlay also shows an `Attach <component name> screenshot` checkbox that captures the active component at 1x resolution, stores it in the session folder, and passes the saved file to the CLI using that flag. The command runs inside the project root and the package rejects `agent.cwd` values that escape the repo.
+When `agent.image.cliFlag` is configured, the overlay also shows an `Attach <component name> screenshot` checkbox that captures the active component at 1x resolution, stores it in the session folder, and passes the saved file to the CLI using that flag. If `agent.logFile` is set to `true`, the dev server also writes the full emitted agent event stream to `.variiant/sessions/<session-id>/agent-events.ndjson`. The command runs inside the project root and the package rejects `agent.cwd` values that escape the repo.
 
 ## Local proving
 

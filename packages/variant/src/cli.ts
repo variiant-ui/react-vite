@@ -1,21 +1,25 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { ensureVariantWorkspaceGitignore } from "./workspace";
+
+export type AgentPreset = "codex" | "claude" | "copilot" | "custom";
 
 type InitOptions = {
   cwd: string;
   force: boolean;
   streaming: "auto" | "text" | "none";
-  agent: "codex" | "custom";
+  agent: AgentPreset | null;
   command: string | null;
 };
 
 const configFileName = "variiant.config.json";
 
-function main(argv: string[]): void {
+async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -25,7 +29,7 @@ function main(argv: string[]): void {
 
   if (command === "init") {
     const options = parseInitOptions(rest);
-    runInit(options);
+    await runInit(options);
     return;
   }
 
@@ -37,7 +41,7 @@ function parseInitOptions(args: string[]): InitOptions {
     cwd: process.cwd(),
     force: false,
     streaming: "text",
-    agent: "codex",
+    agent: null,
     command: null,
   };
 
@@ -72,8 +76,8 @@ function parseInitOptions(args: string[]): InitOptions {
 
     if (token === "--agent") {
       const next = args[index + 1];
-      if (next !== "codex" && next !== "custom") {
-        throw new Error('--agent must be "codex" or "custom".');
+      if (next !== "codex" && next !== "claude" && next !== "copilot" && next !== "custom") {
+        throw new Error('--agent must be "codex", "claude", "copilot", or "custom".');
       }
 
       options.agent = next;
@@ -98,8 +102,9 @@ function parseInitOptions(args: string[]): InitOptions {
   return options;
 }
 
-function runInit(options: InitOptions): void {
-  const configPath = writeInitConfig(options);
+async function runInit(options: InitOptions): Promise<void> {
+  const resolvedOptions = await resolveInitOptions(options);
+  const configPath = writeInitConfig(resolvedOptions);
   process.stdout.write(`Wrote ${configPath}\n`);
 }
 
@@ -109,7 +114,7 @@ function printUsage(): void {
       "variiant CLI",
       "",
       "Usage:",
-      "  variiant init [--force] [--cwd <dir>] [--streaming auto|text|none] [--agent codex|custom] [--command <shell command>]",
+      "  variiant init [--force] [--cwd <dir>] [--streaming auto|text|none] [--agent codex|claude|copilot|custom] [--command <shell command>]",
       "",
       "Commands:",
       "  init   Create or overwrite variiant.config.json with a local agent bridge config",
@@ -118,24 +123,24 @@ function printUsage(): void {
   );
 }
 
-export function runCli(argv: string[]): void {
-  main(argv);
+export async function runCli(argv: string[]): Promise<void> {
+  await main(argv);
 }
 
 export function createDefaultConfig(
   streaming: InitOptions["streaming"] = "text",
-  agent: InitOptions["agent"] = "codex",
+  agent: AgentPreset = "codex",
   command: string | null = null,
 ): Record<string, unknown> {
-  const resolvedCommand = resolveAgentCommand(agent, command);
+  const preset = resolveAgentPreset(agent, command);
   return {
     agent: {
-      command: resolvedCommand,
+      command: preset.command,
       streaming,
-      ...(agent === "codex"
+      ...(preset.imageCliFlag
         ? {
             image: {
-              cliFlag: "--image",
+              cliFlag: preset.imageCliFlag,
             },
           }
         : {}),
@@ -144,6 +149,7 @@ export function createDefaultConfig(
 }
 
 export function writeInitConfig(options: InitOptions): string {
+  const resolvedAgent = options.agent ?? (options.command ? "custom" : "codex");
   const configPath = path.join(options.cwd, configFileName);
   if (fs.existsSync(configPath) && !options.force) {
     throw new Error(`${configFileName} already exists. Re-run with --force to overwrite it.`);
@@ -151,7 +157,7 @@ export function writeInitConfig(options: InitOptions): string {
 
   fs.writeFileSync(
     configPath,
-    `${JSON.stringify(createDefaultConfig(options.streaming, options.agent, options.command), null, 2)}\n`,
+    `${JSON.stringify(createDefaultConfig(options.streaming, resolvedAgent, options.command), null, 2)}\n`,
   );
   ensureVariantWorkspaceGitignore(options.cwd);
   return configPath;
@@ -171,30 +177,175 @@ export function isDirectCliEntry(argvPath: string | undefined, moduleUrl: string
   }
 }
 
-function resolveAgentCommand(agent: InitOptions["agent"], command: string | null): string | string[] {
+function resolveAgentPreset(
+  agent: AgentPreset,
+  command: string | null,
+): {
+  command: string | string[];
+  imageCliFlag: string | null;
+} {
   if (agent === "custom") {
     if (!command || command.trim().length === 0) {
       throw new Error('Custom agent setup requires --command "<shell command>".');
     }
 
-    return command;
+    return {
+      command,
+      imageCliFlag: null,
+    };
   }
 
-  return [
-    "codex",
-    "exec",
-    "--json",
-    "--sandbox",
-    "workspace-write",
-    "--skip-git-repo-check",
-  ];
+  if (agent === "codex") {
+    return {
+      command: [
+        "codex",
+        "exec",
+        "--json",
+        "--sandbox",
+        "workspace-write",
+        "--skip-git-repo-check",
+      ],
+      imageCliFlag: "--image",
+    };
+  }
+
+  if (agent === "claude") {
+    return {
+      command: [
+        "claude",
+        "-p",
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+      ],
+      imageCliFlag: null,
+    };
+  }
+
+  return {
+    command: [
+      "copilot",
+      "-p",
+      "--allow-all",
+    ],
+    imageCliFlag: null,
+  };
+}
+
+async function resolveInitOptions(options: InitOptions): Promise<InitOptions> {
+  if (options.command && !options.agent) {
+    return {
+      ...options,
+      agent: "custom",
+    };
+  }
+
+  if (options.agent) {
+    return options;
+  }
+
+  const detectedAgents = detectAvailableAgentPresets();
+  if (!process.stdin.isTTY || !process.stdout.isTTY || detectedAgents.length === 0) {
+    return {
+      ...options,
+      agent: "codex",
+    };
+  }
+
+  const agent = await promptForAgentSelection(detectedAgents);
+  if (agent !== "custom") {
+    return {
+      ...options,
+      agent,
+    };
+  }
+
+  const command = await promptForCustomCommand();
+  return {
+    ...options,
+    agent,
+    command,
+  };
+}
+
+export function detectAvailableAgentPresets(): AgentPreset[] {
+  return (["codex", "claude", "copilot"] as const).filter((preset) => isCommandAvailable(preset));
+}
+
+function isCommandAvailable(command: "codex" | "claude" | "copilot"): boolean {
+  const result = spawnSync(command, ["--version"], {
+    stdio: "ignore",
+  });
+  return !result.error;
+}
+
+async function promptForAgentSelection(detectedAgents: AgentPreset[]): Promise<AgentPreset> {
+  const options = [...detectedAgents, "custom" as const];
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    process.stdout.write("Detected local agent CLIs:\n");
+    for (let index = 0; index < options.length; index += 1) {
+      const preset = options[index]!;
+      process.stdout.write(`  ${index + 1}. ${describeAgentPreset(preset)}\n`);
+    }
+
+    const answer = await rl.question(`Choose an agent CLI [1]: `);
+    const trimmed = answer.trim();
+    if (trimmed.length === 0) {
+      return options[0]!;
+    }
+
+    const selectedIndex = Number.parseInt(trimmed, 10);
+    if (Number.isNaN(selectedIndex) || selectedIndex < 1 || selectedIndex > options.length) {
+      throw new Error(`Invalid selection "${trimmed}".`);
+    }
+
+    return options[selectedIndex - 1]!;
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptForCustomCommand(): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const answer = await rl.question("Enter the agent command to run: ");
+    if (answer.trim().length === 0) {
+      throw new Error("Custom agent setup requires a non-empty command.");
+    }
+
+    return answer;
+  } finally {
+    rl.close();
+  }
+}
+
+function describeAgentPreset(agent: AgentPreset): string {
+  switch (agent) {
+    case "codex":
+      return "Codex (`codex exec`, screenshot flag: --image)";
+    case "claude":
+      return "Claude Code (`claude -p`)";
+    case "copilot":
+      return "GitHub Copilot (`copilot -p`)";
+    case "custom":
+      return "Custom command";
+  }
 }
 
 if (isDirectCliEntry(process.argv[1], import.meta.url)) {
-  try {
-    main(process.argv.slice(2));
-  } catch (error) {
+  void main(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
-  }
+  });
 }

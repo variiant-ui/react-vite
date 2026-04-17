@@ -169,6 +169,7 @@ export type VariantRuntimeController = {
     setAgentAttachActiveComponentScreenshot: (enabled: boolean) => void;
     startAgentRun: () => void;
     appendAgentLog: (stream: VariantAgentLogEntry["stream"], text: string) => void;
+    replaceLatestAgentLog: (stream: VariantAgentLogEntry["stream"], text: string) => void;
     finishAgentRun: (result?: {
       sessionId?: string | null;
       exitCode?: number | null;
@@ -697,6 +698,37 @@ export function createVariantRuntimeController(options: {
             text,
           },
         ];
+        emit();
+      },
+      replaceLatestAgentLog(stream, text) {
+        if (!text) {
+          return;
+        }
+
+        if (state.agent.logs.length === 0) {
+          state.agent.logs = [
+            {
+              id: 1,
+              stream,
+              text,
+            },
+          ];
+          emit();
+          return;
+        }
+
+        const nextLogs = [...state.agent.logs];
+        const lastEntry = nextLogs.at(-1);
+        if (!lastEntry) {
+          return;
+        }
+
+        nextLogs[nextLogs.length - 1] = {
+          ...lastEntry,
+          stream,
+          text,
+        };
+        state.agent.logs = nextLogs;
         emit();
       },
       finishAgentRun(result = {}) {

@@ -9,6 +9,9 @@ import { getRepresentativeMountedInstance } from "./runtime-core";
 const installedKeyboardControllers = new WeakSet<VariantRuntimeController>();
 const installedOverlayControllers = new WeakSet<VariantRuntimeController>();
 const overlayStyleTagId = "variiant-overlay-styles";
+const variantCanvasZIndex = 2147483646;
+const variantOverlayZIndex = 2147483647;
+const variantOverlayPopoverSelector = '[data-variant-overlay-popover="true"]';
 const agentBridgeStates = new WeakMap<VariantRuntimeController, {
   loaded: boolean;
   loadingPromise: Promise<void> | null;
@@ -32,6 +35,19 @@ type VariantAgentRequestAttachment = {
   height: number;
   scale: 1;
   dataUrl: string;
+};
+
+type VariantAgentRequestTarget = {
+  sourceId: string;
+  displayName: string;
+  selected: string;
+  variantNames: string[];
+  sourceRelativePath: string;
+  exportName: string;
+  variantDirectory: string;
+  exampleVariantFile: string;
+  stabilityRisk: "higher" | "normal";
+  stabilityRiskReason: string | null;
 };
 
 type VariantPagePreview = {
@@ -60,6 +76,11 @@ type VariantCanvasDomState = {
     lastX: number;
     lastY: number;
   };
+};
+
+type PopoverCapableElement = HTMLDivElement & {
+  hidePopover: () => void;
+  showPopover: () => void;
 };
 
 function normalizeKey(key: string): string {
@@ -159,6 +180,21 @@ function ensureOverlayStyles(): void {
   to {
     transform: rotate(360deg);
   }
+}
+
+${variantOverlayPopoverSelector} {
+  padding: 0;
+  border: 0;
+  margin: 0;
+  background: transparent;
+  overflow: visible;
+  width: auto;
+  max-width: none;
+  max-height: none;
+}
+
+${variantOverlayPopoverSelector}::backdrop {
+  background: transparent;
 }`;
   document.head.appendChild(style);
 }
@@ -284,22 +320,174 @@ export function installVariantOverlayUi(controller: VariantRuntimeController): v
   ensureOverlayStyles();
   const container = document.createElement("div");
   container.setAttribute("data-variant-overlay-root", "true");
+  const overlayPopoverHost = document.createElement("div");
+  overlayPopoverHost.setAttribute("data-variant-overlay-popover", "true");
+  overlayPopoverHost.setAttribute("popover", "manual");
   const overlayContainer = document.createElement("div");
   const canvasContainer = document.createElement("div");
-  container.appendChild(overlayContainer);
+  overlayPopoverHost.appendChild(overlayContainer);
+  container.appendChild(overlayPopoverHost);
   container.appendChild(canvasContainer);
   document.body.appendChild(container);
 
   const render = (): void => {
     const snapshot = controller.getSnapshot();
+    syncOverlayMountParent(container, snapshot);
     renderOverlay(overlayContainer, snapshot, controller);
+    syncOverlayPopover(overlayPopoverHost, snapshot);
     renderCanvas(canvasContainer, snapshot, controller);
   };
 
   controller.subscribe(render);
   installedOverlayControllers.add(controller);
+  installOverlayPromotionObserver(controller, overlayPopoverHost);
   void loadAgentBridgeConfig(controller);
   render();
+}
+
+function installOverlayPromotionObserver(
+  controller: VariantRuntimeController,
+  overlayPopoverHost: HTMLDivElement,
+): void {
+  if (typeof MutationObserver === "undefined" || !supportsPopover(overlayPopoverHost)) {
+    return;
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    const snapshot = controller.getSnapshot();
+    syncOverlayMountParent(overlayPopoverHost.parentElement as HTMLDivElement, snapshot);
+    if (snapshot.surface !== "overlay" || !isPopoverOpen(overlayPopoverHost)) {
+      return;
+    }
+
+    if (!mutations.some((mutation) => mutationTouchesCompetingTopLayerSurface(mutation, overlayPopoverHost))) {
+      return;
+    }
+
+    promoteOverlayPopover(overlayPopoverHost);
+  });
+
+  observer.observe(document.body, {
+    attributes: true,
+    attributeFilter: ["open", "popover"],
+    childList: true,
+    subtree: true,
+  });
+}
+
+function syncOverlayMountParent(
+  container: HTMLDivElement,
+  snapshot: VariantRuntimeSnapshot,
+): void {
+  const nextParent = getPreferredOverlayMountParent(container, snapshot);
+  if (!nextParent || container.parentElement === nextParent) {
+    return;
+  }
+
+  nextParent.appendChild(container);
+}
+
+function getPreferredOverlayMountParent(
+  container: HTMLDivElement,
+  snapshot: VariantRuntimeSnapshot,
+): HTMLElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  if (snapshot.surface !== "overlay") {
+    return document.body;
+  }
+
+  const openDialogs = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")];
+  for (let index = openDialogs.length - 1; index >= 0; index -= 1) {
+    const dialog = openDialogs[index];
+    if (dialog !== container && !container.contains(dialog)) {
+      return dialog;
+    }
+  }
+
+  return document.body;
+}
+
+function mutationTouchesCompetingTopLayerSurface(
+  mutation: MutationRecord,
+  overlayPopoverHost: HTMLDivElement,
+): boolean {
+  if (mutation.type === "attributes") {
+    return isCompetingTopLayerSurface(mutation.target, overlayPopoverHost);
+  }
+
+  return [...mutation.addedNodes].some((node) => isCompetingTopLayerSurface(node, overlayPopoverHost));
+}
+
+function isCompetingTopLayerSurface(
+  node: Node | null,
+  overlayPopoverHost: HTMLDivElement,
+): boolean {
+  if (!(node instanceof Element) || node === overlayPopoverHost || overlayPopoverHost.contains(node)) {
+    return false;
+  }
+
+  if (node.matches("dialog[open], [popover]")) {
+    return true;
+  }
+
+  return Boolean(node.querySelector("dialog[open], [popover]"));
+}
+
+function syncOverlayPopover(
+  overlayPopoverHost: HTMLDivElement,
+  snapshot: VariantRuntimeSnapshot,
+): void {
+  if (!supportsPopover(overlayPopoverHost)) {
+    return;
+  }
+
+  if (snapshot.surface !== "overlay") {
+    hideOverlayPopover(overlayPopoverHost);
+    return;
+  }
+
+  if (!isPopoverOpen(overlayPopoverHost)) {
+    showOverlayPopover(overlayPopoverHost);
+  }
+}
+
+function supportsPopover(element: HTMLDivElement): boolean {
+  return typeof (element as PopoverCapableElement).showPopover === "function";
+}
+
+function isPopoverOpen(element: HTMLDivElement): boolean {
+  return element.matches(":popover-open");
+}
+
+function showOverlayPopover(element: HTMLDivElement): void {
+  if (!supportsPopover(element) || isPopoverOpen(element)) {
+    return;
+  }
+
+  (element as PopoverCapableElement).showPopover();
+}
+
+function hideOverlayPopover(element: HTMLDivElement): void {
+  if (!supportsPopover(element) || !isPopoverOpen(element)) {
+    return;
+  }
+
+  (element as PopoverCapableElement).hidePopover();
+}
+
+function promoteOverlayPopover(element: HTMLDivElement): void {
+  if (!supportsPopover(element)) {
+    return;
+  }
+
+  if (isPopoverOpen(element)) {
+    hideOverlayPopover(element);
+  }
+
+  showOverlayPopover(element);
 }
 
 async function submitAgentPrompt(controller: VariantRuntimeController): Promise<void> {
@@ -390,14 +578,24 @@ function buildAgentRequestPayload(
 ): Record<string, unknown> {
   const mountedComponents = snapshot.components
     .filter((component) => component.mountedCount > 0)
-    .map((component) => ({
-      sourceId: component.sourceId,
-      displayName: component.displayName,
-      selected: snapshot.selections[component.sourceId] ?? component.selected,
-      variantNames: component.variantNames,
-    }));
+    .map((component) =>
+      buildAgentRequestTarget(
+        component.sourceId,
+        component.displayName,
+        snapshot.selections[component.sourceId] ?? component.selected,
+        component.variantNames,
+      ),
+    );
 
   const activeComponent = getActiveMountedComponent(snapshot);
+  const activeTarget = activeComponent
+    ? buildAgentRequestTarget(
+        activeComponent.sourceId,
+        activeComponent.displayName,
+        snapshot.selections[activeComponent.sourceId] ?? activeComponent.selected,
+        activeComponent.variantNames,
+      )
+    : null;
 
   return {
     prompt: snapshot.agent.prompt,
@@ -406,9 +604,8 @@ function buildAgentRequestPayload(
       url: window.location.href,
     },
     activeSourceId: snapshot.activeSourceId,
-    activeVariant: activeComponent
-      ? snapshot.selections[activeComponent.sourceId] ?? activeComponent.selected
-      : null,
+    activeVariant: activeTarget?.selected ?? null,
+    activeComponent: activeTarget,
     mountedComponents,
     attachments: attachments.map((attachment) => ({
       kind: attachment.kind,
@@ -423,6 +620,68 @@ function buildAgentRequestPayload(
       dataUrl: attachment.dataUrl,
     })),
   };
+}
+
+function buildAgentRequestTarget(
+  sourceId: string,
+  displayName: string,
+  selected: string,
+  variantNames: string[],
+): VariantAgentRequestTarget {
+  const { sourceRelativePath, exportName } = parseSourceId(sourceId);
+  const variantDirectory = `.variiant/variants/${sourceRelativePath}/${exportName}`;
+  const stabilityRiskReason = getStabilityRiskReason(sourceRelativePath, exportName, displayName);
+
+  return {
+    sourceId,
+    displayName,
+    selected,
+    variantNames,
+    sourceRelativePath,
+    exportName,
+    variantDirectory,
+    exampleVariantFile: `${variantDirectory}/example.tsx`,
+    stabilityRisk: stabilityRiskReason ? "higher" : "normal",
+    stabilityRiskReason,
+  };
+}
+
+function parseSourceId(sourceId: string): {
+  sourceRelativePath: string;
+  exportName: string;
+} {
+  const hashIndex = sourceId.indexOf("#");
+  if (hashIndex === -1) {
+    return {
+      sourceRelativePath: sourceId,
+      exportName: "default",
+    };
+  }
+
+  return {
+    sourceRelativePath: sourceId.slice(0, hashIndex),
+    exportName: sourceId.slice(hashIndex + 1) || "default",
+  };
+}
+
+function getStabilityRiskReason(
+  sourceRelativePath: string,
+  exportName: string,
+  displayName: string,
+): string | null {
+  const text = `${sourceRelativePath} ${exportName} ${displayName}`.toLowerCase();
+  if (
+    text.includes("dialog")
+    || text.includes("modal")
+    || text.includes("offcanvas")
+    || text.includes("drawer")
+    || text.includes("sheet")
+    || text.includes("panel")
+  ) {
+    return "This boundary may own broad layout or container state, so swapping it can cause large content shifts, remounts, or UI resets beyond the intended variant change.";
+  }
+
+  return null;
 }
 
 async function readResponseText(response: Response): Promise<string> {
@@ -444,6 +703,44 @@ async function consumeAgentResponse(
   controller: VariantRuntimeController,
 ): Promise<void> {
   let completed = false;
+  let partialDisplayLog:
+    | {
+      stream: "stdout" | "stderr" | "system";
+      text: string;
+    }
+    | null = null;
+
+  const processDisplayableAgentOutput = (
+    stream: "stdout" | "stderr" | "system",
+    text: string,
+  ): void => {
+    const displayEvent = getDisplayableAgentEvent(stream, text);
+    if (!displayEvent) {
+      return;
+    }
+
+    if (displayEvent.partial) {
+      const nextText = partialDisplayLog?.stream === stream
+        ? `${partialDisplayLog.text}${displayEvent.text}`
+        : displayEvent.text;
+
+      if (partialDisplayLog?.stream === stream) {
+        controller.actions.replaceLatestAgentLog(stream, nextText);
+      } else {
+        controller.actions.appendAgentLog(stream, nextText);
+      }
+
+      partialDisplayLog = {
+        stream,
+        text: nextText,
+      };
+      return;
+    }
+
+    partialDisplayLog = null;
+    controller.actions.appendAgentLog(stream, displayEvent.text);
+  };
+
   const processLine = (line: string): void => {
     if (!line.trim()) {
       return;
@@ -473,10 +770,7 @@ async function consumeAgentResponse(
         case "stderr":
         case "system":
           {
-            const displayText = getDisplayableAgentEventText(event.type, event.text ?? "");
-            if (displayText) {
-              controller.actions.appendAgentLog(event.type, displayText);
-            }
+            processDisplayableAgentOutput(event.type, event.text ?? "");
           }
           break;
         case "done":
@@ -533,10 +827,10 @@ async function consumeAgentResponse(
   }
 }
 
-function getDisplayableAgentEventText(
+function getDisplayableAgentEvent(
   stream: "stdout" | "stderr" | "system",
   text: string,
-): string | null {
+): { text: string; partial: boolean } | null {
   const normalized = normalizeAgentMessageText(text);
   if (!normalized) {
     return null;
@@ -544,15 +838,31 @@ function getDisplayableAgentEventText(
 
   const parsed = tryParseJsonLine(normalized);
   if (!parsed) {
-    return normalized;
+    return { text, partial: false };
+  }
+
+  const partialText = extractPartialHumanMessageFromAgentJson(parsed);
+  if (partialText) {
+    return {
+      text: partialText,
+      partial: true,
+    };
   }
 
   const extracted = extractHumanMessageFromAgentJson(parsed);
   if (extracted) {
-    return extracted;
+    return {
+      text: extracted,
+      partial: false,
+    };
   }
 
-  return stream === "stderr" ? normalized : null;
+  return stream === "stderr"
+    ? {
+      text,
+      partial: false,
+    }
+    : null;
 }
 
 function tryParseJsonLine(text: string): unknown | null {
@@ -580,6 +890,19 @@ function extractHumanMessageFromAgentJson(value: unknown): string | null {
   }
 
   return extractHumanMessageFromAgentItem(value);
+}
+
+function extractPartialHumanMessageFromAgentJson(value: unknown): string | null {
+  if (!isRecord(value) || value.type !== "stream_event" || !isRecord(value.event)) {
+    return null;
+  }
+
+  const delta = isRecord(value.event.delta) ? value.event.delta : null;
+  if (!delta || delta.type !== "text_delta" || typeof delta.text !== "string") {
+    return null;
+  }
+
+  return delta.text;
 }
 
 function extractHumanMessageFromAgentItem(value: unknown): string | null {
@@ -1653,7 +1976,7 @@ function hudShellStyle(): string {
     "position:fixed",
     "top:16px",
     "right:16px",
-    "z-index:9999",
+    `z-index:${variantOverlayZIndex}`,
     "pointer-events:none",
     "width:min(460px,calc(100vw - 32px))",
   ].join(";");
@@ -1883,7 +2206,7 @@ function canvasRootStyle(): string {
   return [
     "position:fixed",
     "inset:0",
-    "z-index:9998",
+    `z-index:${variantCanvasZIndex}`,
     "display:flex",
     "flex-direction:column",
     "background-image:radial-gradient(circle at 1px 1px, rgba(148,163,184,0.35) 1px, transparent 0)",

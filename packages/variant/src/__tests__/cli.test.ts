@@ -56,6 +56,36 @@ describe("variiant cli", () => {
     });
   });
 
+  it("uses a Claude preset command without an image flag", () => {
+    expect(createDefaultConfig("text", "claude", null)).toEqual({
+      agent: {
+        command: [
+          "claude",
+          "-p",
+          "--dangerously-skip-permissions",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--include-partial-messages",
+        ],
+        streaming: "text",
+      },
+    });
+  });
+
+  it("uses a Copilot preset command without an image flag", () => {
+    expect(createDefaultConfig("text", "copilot", null)).toEqual({
+      agent: {
+        command: [
+          "copilot",
+          "-p",
+          "--allow-all",
+        ],
+        streaming: "text",
+      },
+    });
+  });
+
   it("appends the sessions ignore rule without clobbering an existing workspace gitignore", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variiant-cli-gitignore-"));
     const workspaceDir = path.join(tempRoot, ".variiant");

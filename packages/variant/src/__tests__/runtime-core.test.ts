@@ -64,6 +64,7 @@ describe("variant runtime controller", () => {
     controller.actions.setAgentAttachActiveComponentScreenshot(true);
     controller.actions.startAgentRun();
     controller.actions.appendAgentLog("stdout", "Planning changes");
+    controller.actions.replaceLatestAgentLog("stdout", "Planning the final changes");
     controller.actions.finishAgentRun({
       sessionId: "session-123",
       exitCode: 0,
@@ -75,7 +76,7 @@ describe("variant runtime controller", () => {
     expect(controller.getSnapshot().agent.prompt).toBe("Create a denser table variant.");
     expect(controller.getSnapshot().agent.attachActiveComponentScreenshot).toBe(true);
     expect(controller.getSnapshot().agent.status).toBe("success");
-    expect(controller.getSnapshot().agent.logs.at(-1)?.text).toBe("Planning changes");
+    expect(controller.getSnapshot().agent.logs.at(-1)?.text).toBe("Planning the final changes");
     expect(controller.getSnapshot().agent.changedFiles).toEqual([
       ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
     ]);

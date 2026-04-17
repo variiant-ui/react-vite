@@ -47,7 +47,9 @@ Rules:
 - `source` is also the implicit default variant name
 - `default/<name>.tsx` overrides the default export
 - `<NamedExport>/<name>.tsx` overrides a named export
+- only files that provide `export default` are registered as swappable runtime variants; nearby non-default-exported files can be used as helpers without entering the runtime registry
 - the mirrored path under `.variiant/variants/` must match the real source module path
+- when a variant file contains copied relative imports that no longer resolve from the mirrored workspace, resolution should fall back to the original source module directory before surfacing an error
 
 ## Compatibility model
 
@@ -93,6 +95,8 @@ For a source file that has a matching `.variiant/variants` entry:
    - the source component as `source`
    - all discovered exploratory variants for that boundary
 6. The runtime exposes those choices through the overlay and keybindings.
+
+Separately from any proxy rewrites, the Vite plugin injects a small development-only HTML bootstrap that installs the overlay and keyboard bindings as soon as the app loads. That means `Cmd/Ctrl + Shift + .` should open the floating bar even in a fresh app that has no `.variiant/variants/` folder yet.
 
 ### Production behavior
 
@@ -234,6 +238,7 @@ The package should provide:
 - a dev-server bridge that launches a local command in the project working directory
 - a structured request format so arbitrary local agents have enough context to do useful work
 - best-effort streaming of agent output back to the page
+- a low-disruption post-run refresh policy that can prefer HMR over full reload
 
 The package should not provide:
 
@@ -286,6 +291,7 @@ For each agent request, the dev server should materialize a session folder such 
 .variiant/sessions/<timestamp>-<id>/
   request.json
   prompt.md
+  agent-events.ndjson
   orders-table.png
   page.png
   sketch.png
@@ -311,6 +317,9 @@ Current shipped behavior:
 - the browser captures that component at 1x resolution and stores the saved image in the session folder
 - `request.json` records the saved attachment path rather than inlining the base64 payload
 - the dev server passes the saved image path to the configured CLI flag
+- when `agent.logFile` is `true`, the dev server also writes the full emitted agent event stream to `agent-events.ndjson`
+- `agent.refresh` defaults to `"hmr"` so agent-created variant files refresh the affected variiant proxies without forcing a page reload
+- `variantPlugin({ agentRefresh })` can override that refresh mode from `vite.config.ts`
 
 `prompt.md` should be a stable instruction wrapper that tells the agent:
 
@@ -454,6 +463,12 @@ Not every local CLI will provide structured machine-readable output. The bridge 
    Attempt streaming, but fall back to buffered completion if the process or platform makes streaming unreliable.
 
 This is enough for v1.
+
+Current shipped behavior:
+
+- raw text streaming is still supported for generic CLIs
+- Claude commands are normalized to `stream-json` with `--verbose` and `--include-partial-messages` when streaming is enabled
+- the browser extracts partial `text_delta` payloads from Claude stream events and updates the latest-message progress strip incrementally instead of waiting for the final completion line
 
 Later, Variant can support a richer structured adapter mode where a wrapper script emits event types such as:
 

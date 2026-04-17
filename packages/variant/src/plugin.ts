@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 
 import type { Plugin } from "vite";
+import { buildAgentPrompt } from "./agent-prompt";
 import type { VariantAgentStreamingMode } from "./runtime-core";
 import {
   defaultVariantsDir,
@@ -12,6 +13,7 @@ import {
   getWatchedVariantDirs,
   resolveVariantsDir,
   variantSessionsDir,
+  variantWorkspaceDirName,
 } from "./workspace";
 
 export type VariantTargetEntry = {
@@ -33,12 +35,15 @@ export type VariantRegistryEntry = {
 export type VariantPluginOptions = {
   projectRoot?: string;
   variantsDir?: string;
+  agentRefresh?: "hmr" | "full-reload";
 };
 
 export type VariantAgentConfig = {
   command: string | string[];
   cwd?: string;
   streaming?: VariantAgentStreamingMode;
+  refresh?: "hmr" | "full-reload";
+  logFile?: boolean;
   image?: {
     cliFlag?: string;
   };
@@ -49,15 +54,36 @@ export type VariantAppConfig = {
 };
 
 const sourceExtensions = [".tsx", ".ts", ".jsx", ".js", ".mts", ".mjs", ".cts", ".cjs"];
+const importResolutionExtensions = [
+  ...sourceExtensions,
+  ".css",
+  ".scss",
+  ".sass",
+  ".less",
+  ".module.css",
+  ".module.scss",
+  ".module.sass",
+  ".module.less",
+  ".json",
+];
 const variantConfigFileName = "variiant.config.json";
 const variantConfigRoute = "/__variiant/config";
 const variantAgentRunRoute = "/__variiant/agent/run";
 const workspaceSnapshotIgnore = new Set([".git", "coverage", "dist", "node_modules"]);
+const developmentOverlayBootstrapVirtualId = "virtual:variiant/dev-bootstrap";
+const resolvedDevelopmentOverlayBootstrapVirtualId = `\0${developmentOverlayBootstrapVirtualId}`;
+const developmentOverlayBootstrapBrowserPath =
+  `/@id/__x00__${developmentOverlayBootstrapVirtualId}`;
+const developmentOverlayBootstrapModule = [
+  `import { installVariantOverlay } from ${JSON.stringify("@variiant-ui/react-vite/runtime")};`,
+  "installVariantOverlay();",
+].join("\n");
 
 export function variantPlugin(options: VariantPluginOptions = {}): Plugin {
   let projectRoot = "";
   let registry = new Map<string, VariantRegistryEntry>();
   let watchedVariantRoots: string[] = [];
+  let activeAgentRuns = 0;
   const agentSessionToken = crypto.randomUUID();
 
   const refreshRegistry = (): void => {
@@ -84,16 +110,83 @@ export function variantPlugin(options: VariantPluginOptions = {}): Plugin {
         server.watcher.add(variantsRoot);
       }
       server.watcher.add(configPath);
+
+      const agentConfig = resolveVariantAgentConfig(projectRoot);
+      if (agentConfig.enabled) {
+        ensureAgentConventionFile(projectRoot, agentConfig.command);
+      }
+
       const reload = (): void => {
         refreshRegistry();
         server.ws.send({ type: "full-reload" });
+      };
+      const refreshVariantProxyModules = async (
+        previousRegistry: Map<string, VariantRegistryEntry>,
+      ): Promise<void> => {
+        const sourceAbsolutePaths = new Set<string>([
+          ...previousRegistry.keys(),
+          ...registry.keys(),
+        ]);
+
+        const reloads: Promise<void>[] = [];
+        for (const sourceAbsolutePath of sourceAbsolutePaths) {
+          const module = server.moduleGraph.getModuleById(getVariantProxyModuleId(sourceAbsolutePath));
+          if (!module) {
+            continue;
+          }
+
+          reloads.push(server.reloadModule(module));
+        }
+
+        await Promise.all(reloads);
+      };
+      const applyAgentVariantRefresh = async (
+        changedFiles: string[],
+        refreshMode: "hmr" | "full-reload",
+      ): Promise<void> => {
+        const touchesVariantState = changedFiles.some((changedFile) =>
+          shouldReloadVariantState(
+            projectRoot,
+            variantsRoots,
+            configPath,
+            path.join(projectRoot, changedFile),
+          )
+        );
+        if (!touchesVariantState) {
+          return;
+        }
+
+        const previousRegistry = new Map(registry);
+        refreshRegistry();
+        if (refreshMode === "full-reload") {
+          server.ws.send({ type: "full-reload" });
+          return;
+        }
+
+        await refreshVariantProxyModules(previousRegistry);
       };
       const maybeReload = (changedPath: string): void => {
         if (!shouldReloadVariantState(projectRoot, variantsRoots, configPath, changedPath)) {
           return;
         }
 
-        reload();
+        if (activeAgentRuns > 0) {
+          return;
+        }
+
+        const normalizedChangedPath = normalizePath(path.resolve(changedPath));
+        const normalizedConfigPath = normalizePath(path.resolve(configPath));
+
+        // Config file changes require a full reload to pick up new registry state.
+        // Variant source file edits can be handled with targeted HMR.
+        if (normalizedChangedPath === normalizedConfigPath) {
+          reload();
+          return;
+        }
+
+        const previousRegistry = new Map(registry);
+        refreshRegistry();
+        void refreshVariantProxyModules(previousRegistry);
       };
 
       server.watcher.on("add", maybeReload);
@@ -108,24 +201,81 @@ export function variantPlugin(options: VariantPluginOptions = {}): Plugin {
         }
 
         if (pathname === variantAgentRunRoute && req.method === "POST") {
-          void handleVariantAgentRunRequest(req, res, projectRoot, agentSessionToken);
+          activeAgentRuns += 1;
+          void handleVariantAgentRunRequest(
+            req,
+            res,
+            projectRoot,
+            agentSessionToken,
+            options.variantsDir,
+            options.agentRefresh,
+            applyAgentVariantRefresh,
+          ).finally(() => {
+            activeAgentRuns = Math.max(0, activeAgentRuns - 1);
+          });
           return;
         }
 
         next();
       });
     },
+    transformIndexHtml(_html, ctx) {
+      if (!ctx.server) {
+        return undefined;
+      }
+
+      return {
+        html: _html,
+        tags: [
+          {
+            tag: "script",
+            attrs: {
+              type: "module",
+              "data-variiant-dev-bootstrap": "true",
+              src: developmentOverlayBootstrapBrowserPath,
+            },
+            injectTo: "body",
+          },
+        ],
+      };
+    },
     async resolveId(source, importer, resolveOptions) {
+      if (source === developmentOverlayBootstrapVirtualId) {
+        return resolvedDevelopmentOverlayBootstrapVirtualId;
+      }
+
       if (!importer || source.startsWith("\0")) {
         return null;
       }
 
       const normalizedImporter = normalizePath(importer);
-      if (
-        normalizedImporter.startsWith("\0variant-proxy:") ||
-        watchedVariantRoots.some((variantRoot) => isPathInsideRootPath(normalizedImporter, variantRoot))
-      ) {
+      if (normalizedImporter.startsWith("\0variant-proxy:")) {
         return null;
+      }
+
+      const variantSourceContext = resolveVariantSourceContext(
+        projectRoot,
+        watchedVariantRoots,
+        normalizedImporter,
+      );
+      if (variantSourceContext) {
+        if (!isRelativeImport(source)) {
+          return null;
+        }
+
+        const resolved = await this.resolve(source, importer, {
+          ...resolveOptions,
+          skipSelf: true,
+        });
+        if (resolved) {
+          return resolved;
+        }
+
+        const fallbackPath = path.resolve(path.dirname(variantSourceContext.sourceAbsolutePath), source);
+        return this.resolve(fallbackPath, undefined, {
+          ...resolveOptions,
+          skipSelf: true,
+        });
       }
 
       const resolved = await this.resolve(source, importer, {
@@ -145,6 +295,10 @@ export function variantPlugin(options: VariantPluginOptions = {}): Plugin {
       return `\0variant-proxy:${encodeURIComponent(entry.sourceAbsolutePath)}`;
     },
     load(id) {
+      if (id === resolvedDevelopmentOverlayBootstrapVirtualId) {
+        return developmentOverlayBootstrapModule;
+      }
+
       if (!id.startsWith("\0variant-proxy:")) {
         return null;
       }
@@ -207,6 +361,8 @@ function normalizeVariantAppConfig(raw: Record<string, unknown>): VariantAppConf
   const dottedCommand = nested["agent.command"];
   const dottedCwd = nested["agent.cwd"];
   const dottedStreaming = nested["agent.streaming"];
+  const dottedRefresh = nested["agent.refresh"];
+  const dottedLogFile = nested["agent.logFile"];
   const dottedImageCliFlag = nested["agent.image.cliFlag"];
 
   if (dottedCommand !== undefined && agentRecord.command === undefined) {
@@ -219,6 +375,14 @@ function normalizeVariantAppConfig(raw: Record<string, unknown>): VariantAppConf
 
   if (dottedStreaming !== undefined && agentRecord.streaming === undefined) {
     agentRecord.streaming = dottedStreaming;
+  }
+
+  if (dottedRefresh !== undefined && agentRecord.refresh === undefined) {
+    agentRecord.refresh = dottedRefresh;
+  }
+
+  if (dottedLogFile !== undefined && agentRecord.logFile === undefined) {
+    agentRecord.logFile = dottedLogFile;
   }
 
   if (dottedImageCliFlag !== undefined) {
@@ -245,6 +409,8 @@ type ResolvedVariantAgentConfig =
       commandLabel: string;
       cwd: string;
       streaming: VariantAgentStreamingMode;
+    refresh: "hmr" | "full-reload" | undefined;
+    logFile: boolean;
       imageCliFlag: string | null;
     }
   | {
@@ -294,6 +460,16 @@ function resolveVariantAgentConfig(projectRoot: string): ResolvedVariantAgentCon
       enabled: false,
       commandLabel: null,
       message: "agent.command must not be empty.",
+      streaming: null,
+      imageCliFlag: null,
+    };
+  }
+
+  if (config.agent.logFile !== undefined && typeof config.agent.logFile !== "boolean") {
+    return {
+      enabled: false,
+      commandLabel: null,
+      message: "agent.logFile must be a boolean when provided.",
       streaming: null,
       imageCliFlag: null,
     };
@@ -350,6 +526,8 @@ function resolveVariantAgentConfig(projectRoot: string): ResolvedVariantAgentCon
       : normalizedCommand,
     cwd,
     streaming: config.agent.streaming ?? "auto",
+    refresh: config.agent.refresh,
+    logFile: config.agent.logFile ?? false,
     imageCliFlag,
   };
 }
@@ -364,6 +542,182 @@ function isPathInsideRootPath(candidatePath: string, rootPath: string): boolean 
   const normalizedRootPath = normalizePath(path.resolve(rootPath));
   return normalizedCandidatePath === normalizedRootPath
     || normalizedCandidatePath.startsWith(`${normalizedRootPath}/`);
+}
+
+function isRelativeImport(source: string): boolean {
+  return source.startsWith("./") || source.startsWith("../");
+}
+
+function normalizeRelativeImportPath(value: string): string {
+  const normalized = normalizePath(value);
+  return normalized.startsWith(".") ? normalized : `./${normalized}`;
+}
+
+function resolveVariantSourceContext(
+  projectRoot: string,
+  variantsRoots: string[],
+  importer: string,
+): { sourceAbsolutePath: string } | null {
+  for (const variantsRoot of variantsRoots) {
+    if (!isPathInsideRootPath(importer, variantsRoot)) {
+      continue;
+    }
+
+    const relativePath = normalizePath(path.relative(variantsRoot, importer));
+    const match = parseConventionalVariantPath(relativePath);
+    if (!match) {
+      return null;
+    }
+
+    return {
+      sourceAbsolutePath: normalizePath(path.resolve(projectRoot, match.sourceRelativePath)),
+    };
+  }
+
+  return null;
+}
+
+function resolveImportTargetCandidate(candidatePath: string): string | null {
+  if (fs.existsSync(candidatePath) && fs.statSync(candidatePath).isFile()) {
+    return candidatePath;
+  }
+
+  for (const extension of importResolutionExtensions) {
+    const withExtension = `${candidatePath}${extension}`;
+    if (fs.existsSync(withExtension) && fs.statSync(withExtension).isFile()) {
+      return candidatePath;
+    }
+  }
+
+  for (const extension of importResolutionExtensions) {
+    const asIndex = path.join(candidatePath, `index${extension}`);
+    if (fs.existsSync(asIndex) && fs.statSync(asIndex).isFile()) {
+      return candidatePath;
+    }
+  }
+
+  return null;
+}
+
+function normalizeVariantImportSpecifier(
+  importerAbsolutePath: string,
+  importSpecifier: string,
+  variantsRoot: string,
+): string {
+  if (!isRelativeImport(importSpecifier)) {
+    return importSpecifier;
+  }
+
+  const importerDir = path.dirname(importerAbsolutePath);
+  const directCandidate = path.resolve(importerDir, importSpecifier);
+  if (resolveImportTargetCandidate(directCandidate)) {
+    return importSpecifier;
+  }
+
+  if (isPathInsideRootPath(directCandidate, variantsRoot)) {
+    return importSpecifier;
+  }
+
+  const variantsRootParent = path.dirname(variantsRoot);
+  if (!isPathInsideRootPath(directCandidate, variantsRootParent)) {
+    return importSpecifier;
+  }
+
+  const relativeToVariantsParent = path.relative(variantsRootParent, directCandidate);
+  if (
+    relativeToVariantsParent === ""
+    || relativeToVariantsParent.startsWith("..")
+    || path.isAbsolute(relativeToVariantsParent)
+  ) {
+    return importSpecifier;
+  }
+
+  const correctedCandidate = path.join(variantsRoot, relativeToVariantsParent);
+  const resolvedTarget = resolveImportTargetCandidate(correctedCandidate);
+  if (!resolvedTarget) {
+    return importSpecifier;
+  }
+
+  return normalizeRelativeImportPath(path.relative(importerDir, resolvedTarget));
+}
+
+function normalizeVariantFileContents(
+  fileContents: string,
+  importerAbsolutePath: string,
+  variantsRoot: string,
+): string {
+  const rewriteSpecifier = (value: string): string =>
+    normalizeVariantImportSpecifier(importerAbsolutePath, value, variantsRoot);
+
+  return fileContents
+    .replace(
+      /(\bfrom\s*["'])([^"']+)(["'])/g,
+      (_match, prefix: string, specifier: string, suffix: string) =>
+        `${prefix}${rewriteSpecifier(specifier)}${suffix}`,
+    )
+    .replace(
+      /(\bimport\s*\(\s*["'])([^"']+)(["']\s*\))/g,
+      (_match, prefix: string, specifier: string, suffix: string) =>
+        `${prefix}${rewriteSpecifier(specifier)}${suffix}`,
+    );
+}
+
+function injectMissingDefaultExport(contents: string, exportName: string): string {
+  if (/\bexport\s+default\b/.test(contents) || /\bas\s+default\b/.test(contents)) {
+    return contents;
+  }
+
+  const escapedName = exportName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const hasMatchingExport =
+    new RegExp(`\\bexport[^;{=]*\\b${escapedName}\\b`).test(contents) ||
+    new RegExp(`\\bexport\\s*\\{[^}]*\\b${escapedName}\\b[^}]*\\}`).test(contents);
+
+  if (!hasMatchingExport) {
+    return contents;
+  }
+
+  return `${contents.trimEnd()}\n\nexport default ${exportName};\n`;
+}
+
+export function normalizeChangedVariantImports(
+  projectRoot: string,
+  changedFiles: string[],
+  variantsDir?: string,
+): string[] {
+  const variantsRoots = getWatchedVariantDirs(variantsDir)
+    .map((variantDir) => normalizePath(path.join(projectRoot, variantDir)))
+    .filter((variantRoot) => fs.existsSync(variantRoot));
+  const normalizedFiles: string[] = [];
+
+  for (const changedFile of changedFiles) {
+    if (!sourceExtensions.some((extension) => changedFile.endsWith(extension))) {
+      continue;
+    }
+
+    const absolutePath = normalizePath(path.join(projectRoot, changedFile));
+    const variantsRoot = variantsRoots.find((candidateRoot) => isPathInsideRootPath(absolutePath, candidateRoot));
+    if (!variantsRoot || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+      continue;
+    }
+
+    const currentContents = fs.readFileSync(absolutePath, "utf8");
+    let normalizedContents = normalizeVariantFileContents(currentContents, absolutePath, variantsRoot);
+
+    const relativePath = normalizePath(path.relative(variantsRoot, absolutePath));
+    const match = parseConventionalVariantPath(relativePath);
+    if (match && match.exportName !== "default") {
+      normalizedContents = injectMissingDefaultExport(normalizedContents, match.exportName);
+    }
+
+    if (normalizedContents === currentContents) {
+      continue;
+    }
+
+    fs.writeFileSync(absolutePath, normalizedContents);
+    normalizedFiles.push(changedFile);
+  }
+
+  return normalizedFiles.sort();
 }
 
 function writeJsonResponse(res: ServerResponse, statusCode: number, payload: unknown): void {
@@ -404,6 +758,9 @@ async function handleVariantAgentRunRequest(
   res: ServerResponse,
   projectRoot: string,
   sessionToken: string,
+  variantsDir?: string,
+  agentRefreshOverride?: "hmr" | "full-reload",
+  onComplete?: (changedFiles: string[], refreshMode: "hmr" | "full-reload") => Promise<void>,
 ): Promise<void> {
   if (req.headers["x-variiant-token"] !== sessionToken) {
     writeJsonResponse(res, 403, {
@@ -434,6 +791,11 @@ async function handleVariantAgentRunRequest(
   }
   const session = createVariantAgentSession(projectRoot, requestPayload);
   const beforeSnapshot = captureWorkspaceSnapshot(projectRoot);
+  const eventLogStream = agent.logFile
+    ? fs.createWriteStream(path.join(session.sessionDir, "agent-events.ndjson"), {
+      encoding: "utf8",
+    })
+    : null;
 
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
@@ -442,12 +804,18 @@ async function handleVariantAgentRunRequest(
 
   const sendEvent = (event: Record<string, unknown>): void => {
     res.write(`${JSON.stringify(event)}\n`);
+    if (eventLogStream) {
+      eventLogStream.write(`${JSON.stringify(event)}\n`);
+    }
   };
 
   sendEvent({
     type: "session",
     sessionId: session.sessionId,
     sessionPath: normalizePath(path.relative(projectRoot, session.sessionDir)),
+    eventLogPath: eventLogStream
+      ? normalizePath(path.join(variantSessionsDir, session.sessionId, "agent-events.ndjson"))
+      : null,
   });
 
   const command = normalizeAgentCommand(
@@ -485,7 +853,28 @@ async function handleVariantAgentRunRequest(
     return null;
   });
 
-  const changedFiles = detectChangedFiles(beforeSnapshot, captureWorkspaceSnapshot(projectRoot));
+  const initialAfterSnapshot = captureWorkspaceSnapshot(projectRoot);
+  const initialChangedFiles = detectChangedFiles(beforeSnapshot, initialAfterSnapshot);
+  const normalizedVariantFiles = normalizeChangedVariantImports(
+    projectRoot,
+    initialChangedFiles,
+    variantsDir,
+  );
+  if (normalizedVariantFiles.length > 0) {
+    sendEvent({
+      type: "system",
+      text: `Normalized variiant imports in ${normalizedVariantFiles.join(", ")}.`,
+    });
+  }
+  const changedFiles = normalizedVariantFiles.length > 0
+    ? detectChangedFiles(beforeSnapshot, captureWorkspaceSnapshot(projectRoot))
+    : initialChangedFiles;
+
+  for (const issue of validateChangedVariantFiles(projectRoot, changedFiles, variantsDir)) {
+    sendEvent({ type: "system", text: `Variant issue — ${issue.file}: ${issue.message}` });
+  }
+
+  const refreshMode = agentRefreshOverride ?? agent.refresh ?? "hmr";
   sendEvent({
     type: "done",
     sessionId: session.sessionId,
@@ -493,7 +882,9 @@ async function handleVariantAgentRunRequest(
     changedFiles,
     error: exitCode === null ? "The configured agent command failed to start." : null,
   });
+  eventLogStream?.end();
   res.end();
+  await onComplete?.(changedFiles, refreshMode);
 }
 
 async function readRequestBody(req: IncomingMessage): Promise<string> {
@@ -651,54 +1042,6 @@ function sanitizeAttachmentFileName(fileName: string, fallbackExtension: string)
   return `${baseName}.${extension}`;
 }
 
-function getMaterializedAttachmentPaths(requestPayload: Record<string, unknown>): string[] {
-  const attachments = Array.isArray(requestPayload.attachments) ? requestPayload.attachments : [];
-  return attachments
-    .filter((attachment): attachment is VariantAgentSessionAttachment =>
-      isRecord(attachment) && typeof attachment.path === "string",
-    )
-    .map((attachment) => attachment.path);
-}
-
-function buildAgentPrompt(
-  projectRoot: string,
-  sessionId: string,
-  requestPayload: Record<string, unknown>,
-): string {
-  const sessionRelativePath = `${variantSessionsDir}/${sessionId}`;
-  const prompt = typeof requestPayload.prompt === "string" ? requestPayload.prompt : "";
-  const attachmentPaths = getMaterializedAttachmentPaths(requestPayload);
-  const attachmentBlock = attachmentPaths.length > 0
-    ? [
-        "",
-        "Image attachments:",
-        ...attachmentPaths.map((attachmentPath) => `- ${attachmentPath}`),
-      ]
-    : [];
-
-  return [
-    "You are operating inside a local variiant-ui development session.",
-    `Project root: ${normalizePath(projectRoot)}`,
-    `Session folder: ${sessionRelativePath}`,
-    "",
-    "Context files:",
-    `- ${sessionRelativePath}/request.json`,
-    `- ${sessionRelativePath}/prompt.md`,
-    "",
-    "Behavior requirements:",
-    "- Work within the project root only.",
-    "- Prefer creating or updating .variiant/variants implementations when that fits the request.",
-    "- Keep source import boundaries stable.",
-    "- If you edit files, leave the workspace in a valid state for the dev server to reload.",
-    "",
-    "User request:",
-    prompt || "(no prompt provided)",
-    "",
-    "Use the JSON request file for page context and mounted component hints.",
-    ...attachmentBlock,
-  ].join("\n");
-}
-
 function normalizeAgentCommand(
   command: string | string[],
   streaming: VariantAgentStreamingMode,
@@ -706,6 +1049,14 @@ function normalizeAgentCommand(
   imagePaths: string[] = [],
 ): string | string[] {
   if (Array.isArray(command)) {
+    if (command[0] === "claude") {
+      return appendImageArguments(
+        normalizeClaudeCommandArray(command, streaming),
+        imageCliFlag,
+        imagePaths,
+      );
+    }
+
     if (command[0] !== "codex") {
       return appendImageArguments(command, imageCliFlag, imagePaths);
     }
@@ -735,6 +1086,14 @@ function normalizeAgentCommand(
   }
 
   if (!command.startsWith("codex")) {
+    if (command.startsWith("claude")) {
+      return appendImageArguments(
+        normalizeClaudeCommandString(command, streaming),
+        imageCliFlag,
+        imagePaths,
+      );
+    }
+
     return appendImageArguments(command, imageCliFlag, imagePaths);
   }
 
@@ -760,6 +1119,54 @@ function normalizeAgentCommand(
   }
 
   return appendImageArguments(normalized, imageCliFlag, imagePaths);
+}
+
+function normalizeClaudeCommandArray(
+  command: string[],
+  streaming: VariantAgentStreamingMode,
+): string[] {
+  if (streaming === "none") {
+    return command;
+  }
+
+  const args = [...command];
+  if (!args.includes("--output-format")) {
+    args.push("--output-format", "stream-json");
+  }
+
+  if (!args.includes("--verbose")) {
+    args.push("--verbose");
+  }
+
+  if (!args.includes("--include-partial-messages")) {
+    args.push("--include-partial-messages");
+  }
+
+  return args;
+}
+
+function normalizeClaudeCommandString(
+  command: string,
+  streaming: VariantAgentStreamingMode,
+): string {
+  if (streaming === "none") {
+    return command;
+  }
+
+  let normalized = command;
+  if (!/\s--output-format\b/.test(normalized)) {
+    normalized = `${normalized} --output-format stream-json`;
+  }
+
+  if (!/\s--verbose\b/.test(normalized)) {
+    normalized = `${normalized} --verbose`;
+  }
+
+  if (!/\s--include-partial-messages\b/.test(normalized)) {
+    normalized = `${normalized} --include-partial-messages`;
+  }
+
+  return normalized;
 }
 
 function appendImageArguments(
@@ -821,6 +1228,10 @@ function streamProcessOutput(
       text: buffered,
     });
   });
+}
+
+function getVariantProxyModuleId(sourceAbsolutePath: string): string {
+  return `\0variant-proxy:${encodeURIComponent(normalizePath(sourceAbsolutePath))}`;
 }
 
 type WorkspaceSnapshot = Map<string, string>;
@@ -901,6 +1312,10 @@ function loadConventionalVariants(
     const relativePath = normalizePath(path.relative(variantsRoot, variantFilePath));
     const match = parseConventionalVariantPath(relativePath);
     if (!match) {
+      continue;
+    }
+
+    if (!detectHasDefaultExport(variantFilePath)) {
       continue;
     }
 
@@ -1181,4 +1596,113 @@ function buildVariantExport(exportName: string, proxyIdentifier: string): string
   return exportName === "default"
     ? `export default ${proxyIdentifier};`
     : `export { ${proxyIdentifier} as ${exportName} };`;
+}
+
+// ---------------------------------------------------------------------------
+// Post-run validation
+// ---------------------------------------------------------------------------
+
+type VariantFileIssue = {
+  file: string;
+  message: string;
+};
+
+export function validateChangedVariantFiles(
+  projectRoot: string,
+  changedFiles: string[],
+  variantsDir?: string,
+): VariantFileIssue[] {
+  const variantsRoot = normalizePath(
+    path.join(projectRoot, resolveVariantsDir(projectRoot, variantsDir)),
+  );
+  const issues: VariantFileIssue[] = [];
+
+  for (const changedFile of changedFiles) {
+    if (!sourceExtensions.some((ext) => changedFile.endsWith(ext))) {
+      continue;
+    }
+
+    const absolutePath = normalizePath(path.join(projectRoot, changedFile));
+    if (!isPathInsideRootPath(absolutePath, variantsRoot)) {
+      continue;
+    }
+
+    if (!fs.existsSync(absolutePath)) {
+      continue;
+    }
+
+    const relativePath = normalizePath(path.relative(variantsRoot, absolutePath));
+    if (!parseConventionalVariantPath(relativePath)) {
+      continue;
+    }
+
+    if (!detectHasDefaultExport(absolutePath)) {
+      issues.push({
+        file: changedFile,
+        message: "no default export — add `export default ComponentName;` as the last line",
+      });
+    }
+  }
+
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
+// Agent convention file
+// ---------------------------------------------------------------------------
+
+export function ensureAgentConventionFile(
+  projectRoot: string,
+  command: string | string[],
+): void {
+  const fileName = agentConventionFileName(command);
+  const filePath = path.join(projectRoot, variantWorkspaceDirName, fileName);
+  if (fs.existsSync(filePath)) {
+    return;
+  }
+
+  fs.mkdirSync(path.join(projectRoot, variantWorkspaceDirName), { recursive: true });
+  fs.writeFileSync(filePath, agentConventionFileContent());
+}
+
+function agentConventionFileName(command: string | string[]): "CLAUDE.md" | "AGENTS.md" {
+  const first = Array.isArray(command) ? (command[0] ?? "") : command;
+  return first.startsWith("claude") ? "CLAUDE.md" : "AGENTS.md";
+}
+
+function agentConventionFileContent(): string {
+  return [
+    "# Variiant conventions",
+    "",
+    "This project uses variiant-ui for switchable runtime UI variants.",
+    "",
+    "## Variant file structure",
+    "",
+    "Variant files live at the mirrored path:",
+    "```",
+    ".variiant/variants/<source-relative-path>/<export-name>/<variant-name>.tsx",
+    "```",
+    "",
+    "For a default export: `.variiant/variants/src/components/Button.tsx/default/pill.tsx`",
+    "For a named export: `.variiant/variants/src/components/Panel.tsx/PanelHeader/compact.tsx`",
+    "",
+    "## Required: default export",
+    "",
+    "Every variant file must end with a default export:",
+    "```tsx",
+    "export default ComponentName;",
+    "```",
+    "Files that only have named exports are silently ignored — they will not appear as selectable variants.",
+    "",
+    "## Import paths",
+    "",
+    "- Do not compute long relative paths from `.variiant/variants/` back into the app source tree — they are fragile.",
+    "- Use stable app-root import specifiers (e.g. `src/components/...`) that already work in the project.",
+    "- Import shared logic from sibling modules inside the same variant directory.",
+    "",
+    "## Targets",
+    "",
+    "The session `request.json` contains `activeComponent` and `mountedComponents` with exact `variantDirectory` paths.",
+    "Use those as targets — do not invent new top-level paths.",
+  ].join("\n") + "\n";
 }

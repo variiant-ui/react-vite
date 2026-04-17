@@ -57,6 +57,8 @@ export default defineConfig({
 });
 ```
 
+The dev plugin should make `Cmd/Ctrl + Shift + .` open the floating bar immediately, even before `.variiant/variants/` exists.
+
 ### 2. Keep imports unchanged
 
 The host app should continue importing components normally:
@@ -90,16 +92,17 @@ Use this script:
 1. Start the app in development mode.
 2. Open the route that mounts the source component.
 3. Confirm the source implementation renders with unchanged imports.
-4. Press `Cmd/Ctrl + Shift + .` to open the overlay.
-5. Confirm the mounted component appears in the overlay.
-6. Switch to each exploratory variant.
-7. Press `Cmd/Ctrl + Shift + ,` to open the fullscreen canvas.
-8. Confirm `Components` mode shows only the mounted component families on the current page, with source-file labels in the top-left of each group.
-9. Switch to `Pages` mode and confirm the active component family renders as duplicated full-page DOM previews, one preview per variant.
-10. Confirm the page still functions.
-11. Use `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` to switch the active mounted component.
-12. Use `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` to switch the active variant.
-13. Refresh and confirm the local runtime selection persists if expected.
+4. Press `Cmd/Ctrl + Shift + .` to open the overlay, even if no `.variiant/variants/` folder exists yet.
+5. Confirm the floating bar appears.
+6. After adding variant files, confirm the mounted component appears in the overlay.
+7. Switch to each exploratory variant.
+8. Press `Cmd/Ctrl + Shift + ,` to open the fullscreen canvas.
+9. Confirm `Components` mode shows only the mounted component families on the current page, with source-file labels in the top-left of each group.
+10. Switch to `Pages` mode and confirm the active component family renders as duplicated full-page DOM previews, one preview per variant.
+11. Confirm the page still functions.
+12. Use `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` to switch the active mounted component.
+13. Use `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` to switch the active variant.
+14. Refresh and confirm the local runtime selection persists if expected.
 
 Then verify production:
 
