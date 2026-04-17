@@ -133,11 +133,49 @@ import { helpers } from "./compact";
 \`\`\`
 Why it breaks: siblings are peer alternatives. Derive from the source component or a dedicated shared helper, not from another variant file.
 
+### ✗ WRONG — creating a new source file when mountedComponents is empty
+Scenario: \`request.json\` has \`"mountedComponents": []\` because the user opened the overlay before any variants were registered. The user's request mentions \`enrichmentOptions.tsx\`.
+\`\`\`
+// Agent creates a brand-new source file: ← WRONG
+src/pages/datasourceSettings/enrichment/datasourceSettingsEnrichment.tsx
+
+// Agent edits app routing: ← WRONG
+src/routes/routes.tsx
+
+// Agent creates variants for the new file: ← target doesn't even exist in the app yet
+.variiant/variants/src/pages/.../datasourceSettingsEnrichment.tsx/default/workflow-design.tsx
+\`\`\`
+Why it breaks: the agent touched source files it should never touch, and targeted a component that isn't in the app's import chain. The correct target is the EXISTING \`enrichmentOptions.tsx\` the user described.
+
+### ✓ CORRECT — variant for a component not yet in mountedComponents
+Same scenario: user mentions \`enrichmentOptions.tsx\`, page URL confirms the enrichment settings view.
+\`\`\`
+.variiant/variants/src/pages/datasourceSettings/enrichment/enrichmentOptions.tsx/default/workflow-design.tsx
+\`\`\`
+The user reloads → the plugin rewrites the import → the component appears in the overlay immediately.
+
+## WHEN MOUNTEDCOMPONENTS IS EMPTY
+\`request.json\` may contain \`"mountedComponents": []\` and \`"activeComponent": null\`. This happens when the user triggered the overlay before any variants were registered for the currently rendered components. It is NOT an error and does NOT mean there is no target.
+
+**What to do:**
+- Read the user's request for explicit mentions of component file names (e.g. "enrichmentOptions.tsx", "OrdersTable").
+- Use the \`page.url\` field in request.json to corroborate which component is likely rendered at that route.
+- Infer the source-relative path and export name of the target component from those signals.
+- Create the variant at the correct mirrored path for that existing source file.
+- The component will appear in the overlay the next time the user loads that page — no source changes are needed to make that happen.
+
+**What NOT to do:**
+- Do NOT create new source files to "prepare" a component for variant tracking.
+- Do NOT edit app routing, index files, barrel files, or any source plumbing to wire a new file into the app.
+- Do NOT refuse to act or ask the user to navigate somewhere else first.
+
+Empty \`mountedComponents\` is a normal starting state for brand-new variant targets. Variants are discovered by the plugin on the next page load without any source changes.
+
 ## REASONING — THINK BEFORE YOU CODE
 Work through these steps before writing any file:
 
 1. **What does the user actually want?** Identify the design goal from their prompt.
-2. **Which component and export are being targeted?** Match against mounted component hints in the JSON request file.
+2. **Which component and export are being targeted?** First check \`mountedComponents\` in request.json for exact \`variantDirectory\` paths. If the list is empty, infer the target from explicit file mentions in the user's request and the \`page.url\` field — see the WHEN MOUNTEDCOMPONENTS IS EMPTY section above.
 3. **What is the correct mirrored path?** Form \`.variiant/variants/<source-path>/<export>/<name>.tsx\` explicitly.
 4. **Create or modify?** If the active variant file already exists, edit it in place. If creating, write a thin wrapper.
 5. **How to reference source code?** Use the app's aliased import path (e.g. \`@/components/Foo\`). Avoid relative paths that cross the variants root.
