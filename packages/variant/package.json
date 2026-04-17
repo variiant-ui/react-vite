@@ -1,6 +1,6 @@
 {
   "name": "@variiant-ui/react-vite",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Vite plugin that enables parallel React component explorations without modifying app source code. The swap boundary lives in the toolchain — app imports never change.",
   "license": "MIT",
   "type": "module",
