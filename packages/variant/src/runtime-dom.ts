@@ -24,6 +24,54 @@ const variantOverlayZIndex = 2147483647;
 const variantOverlayPopoverSelector = '[data-variant-overlay-popover="true"]';
 const variantTweakCatalogRoutePath = "/__variiant/tweak/catalog";
 const variantTweakApplyRoutePath = "/__variiant/tweak/apply";
+const markerIconSvg = String.raw`<svg width="42" height="84" viewBox="0 0 42 84" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M20.7806 0C17.758 0 12.8462 11.3348 12.8462 21.1584H29.0928C29.0928 11.3348 23.8032 0 20.7806 0Z" fill="#630000"/>
+<path d="M41.5611 71.4095V83.5H1.14441e-05V71.4095C1.14441e-05 49.1176 9.82354 45.3393 9.82354 37.405L10.5792 21.5362C11.9646 20.9065 15.9444 19.647 20.7806 19.647C25.6168 19.647 29.5965 20.9065 30.9819 21.5362L31.7376 37.405C31.7376 45.3393 41.5611 49.1176 41.5611 71.4095Z" fill="#C00404"/>
+<mask id="variant-marker-mask" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="19" width="42" height="65">
+<path d="M41.5611 71.4095V83.5H1.14441e-05V71.4095C1.14441e-05 49.1176 9.82354 45.3393 9.82354 37.405L10.5792 21.5362C11.9646 20.9065 15.9444 19.647 20.7806 19.647C25.6168 19.647 29.5965 20.9065 30.9819 21.5362L31.7376 37.405C31.7376 45.3393 41.5611 49.1176 41.5611 71.4095Z" fill="#C00404"/>
+</mask>
+<g mask="url(#variant-marker-mask)">
+<ellipse cx="29.8638" cy="52.9327" rx="5.37081" ry="13.6018" transform="rotate(-11.3827 29.8638 52.9327)" fill="url(#variant-marker-paint0)"/>
+<ellipse cx="9.82393" cy="54.2351" rx="8.29916" ry="20.3629" transform="rotate(13.5728 9.82393 54.2351)" fill="url(#variant-marker-paint1)"/>
+<ellipse cx="15.1136" cy="33.0767" rx="8.29916" ry="20.3629" transform="rotate(1.38484 15.1136 33.0767)" fill="url(#variant-marker-paint2)"/>
+<ellipse cx="27.8681" cy="31.3597" rx="2.49525" ry="10.1026" transform="rotate(2.48783 27.8681 31.3597)" fill="url(#variant-marker-paint3)"/>
+</g>
+<defs>
+<radialGradient id="variant-marker-paint0" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(29.8638 52.9327) rotate(90) scale(13.6018 5.37081)">
+<stop offset="0.379808" stop-color="#FFB9B9" stop-opacity="0.6"/>
+<stop offset="1" stop-color="#737373" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="variant-marker-paint1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(9.82393 54.2351) rotate(90) scale(20.3629 8.29916)">
+<stop offset="0.379808" stop-opacity="0.26"/>
+<stop offset="1" stop-color="#737373" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="variant-marker-paint2" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(15.1136 33.0767) rotate(90) scale(20.3629 8.29916)">
+<stop offset="0.379808" stop-opacity="0.26"/>
+<stop offset="1" stop-color="#737373" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="variant-marker-paint3" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(27.8681 31.3597) rotate(90) scale(10.1026 2.49525)">
+<stop offset="0.379808" stop-color="#FFB9B9" stop-opacity="0.6"/>
+<stop offset="1" stop-color="#737373" stop-opacity="0"/>
+</radialGradient>
+</defs>
+</svg>`;
+const stickyIconSvg = String.raw`<svg width="80" height="90" viewBox="0 0 80 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g filter="url(#variant-sticky-filter)">
+<rect x="9.99054" y="-0.381287" width="64.4282" height="64.4282" rx="4" transform="rotate(5.76506 9.99054 -0.381287)" fill="#FFED9C"/>
+</g>
+<defs>
+<filter id="variant-sticky-filter" x="2.43187e-05" y="0" width="79.6116" height="89.7116" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset dx="1" dy="15"/>
+<feGaussianBlur stdDeviation="2.45"/>
+<feComposite in2="hardAlpha" operator="out"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.17 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_49"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_49" result="shape"/>
+</filter>
+</defs>
+</svg>`;
 const agentBridgeStates = new WeakMap<VariantRuntimeController, {
   loaded: boolean;
   loadingPromise: Promise<void> | null;
@@ -771,6 +819,8 @@ function buildAgentRequestPayload(
         sourceId: comment.sourceId,
         instanceId: comment.instanceId,
         text: comment.text.trim(),
+        domOpeningTag: comment.domOpeningTag,
+        domTextSnippet: comment.domTextSnippet,
         anchor: comment.anchor,
         viewportPoint: comment.viewportPoint,
         visibilityKey: comment.visibilityKey,
@@ -1642,15 +1692,6 @@ function renderOverlay(
   const errorSummaryMarkup = errorSummary
     ? `<div data-variant-agent-error="true" style="${errorNoteStyle()}">${escapeHtml(errorSummary)}</div>`
     : "";
-  const toolSummary = snapshot.toolMode === "none"
-    ? "No tool active."
-    : snapshot.toolMode === "inspect"
-      ? "Inspect mode is active. Hover the live page to inspect exact component boundaries."
-      : snapshot.toolMode === "comment"
-        ? "Comment mode is active. Click the live page to pin contextual comments to visible component instances."
-        : snapshot.toolMode === "sketch"
-          ? "Sketch mode is active. Draw directly on top of the page; the red overlay will be attached to the next run."
-          : "Tweak mode is active. Load deterministic copy targets from the active variant file and apply narrow edits locally.";
   const tweakLoadDisabled = !active || activeSelection === "source";
   const tweakEntriesMarkup = snapshot.tweaks.entries.length > 0
     ? `<div style="${stackStyle()}">${snapshot.tweaks.entries.map((entry) => `
@@ -1672,14 +1713,15 @@ function renderOverlay(
       </div>
     `).join("")}</div>`
     : `<div style="${hintTextStyle()}">Load copy targets from the active variant to make small deterministic text edits without another agent run.</div>`;
-  const attachmentChipsMarkup = [
+  const attachmentChips = [
     snapshot.comments.length > 0
       ? `<div style="${attachmentChipStyle()}">${escapeHtml(`${snapshot.comments.length} comment${snapshot.comments.length === 1 ? "" : "s"}`)}</div>`
       : "",
     snapshot.sketch.status === "ready"
       ? `<div style="${attachmentChipStyle()}">Sketch attached</div>`
       : "",
-  ].filter(Boolean).join("");
+  ].filter(Boolean);
+  const attachmentChipsMarkup = attachmentChips.join("");
   const reviewResultsMarkup = snapshot.reviewResults.length > 0
     ? `<div style="${stackStyle()}">${snapshot.reviewResults.map((result) => `
       <div data-variant-review-result="${escapeHtml(result.sourceId)}" style="${reviewCardStyle()}">
@@ -1688,96 +1730,131 @@ function renderOverlay(
         <div style="${hintTextStyle()}">${escapeHtml(result.changedFiles.slice(0, 2).join(", "))}${result.changedFiles.length > 2 ? "..." : ""}</div>
       </div>
     `).join("")}</div>`
-    : `<div style="${hintTextStyle()}">No generated results yet. Run the agent from Ideate mode to populate review targets.</div>`;
+    : `<div style="${hintTextStyle()}">No generated results yet. Run the agent to populate review targets.</div>`;
 
-  container.innerHTML = `
-<div style="${hudShellStyle()}">
-  <div style="${panelStyle()}">
-    <div style="${metaRowStyle()}">
-      <div style="${segmentedRowStyle()}">
-        ${(["ideate", "review", "tweak"] as const).map((mode) => `
+  const trayVisible = snapshot.dockExpanded;
+  const primarySelection = snapshot.toolMode === "sketch" || snapshot.toolMode === "comment" || snapshot.toolMode === "tweak"
+    ? snapshot.toolMode
+    : trayVisible
+      ? "prompt"
+      : "none";
+  const trayEyebrow = snapshot.dockMode === "tweak"
+    ? "Tweak"
+    : snapshot.dockMode === "review"
+      ? "Review"
+      : "Prompt";
+  const traySummary = snapshot.dockMode === "tweak"
+    ? snapshot.tweaks.targetFile ?? "Select a generated variant to inspect deterministic copy tweaks."
+    : snapshot.dockMode === "review"
+      ? snapshot.reviewResults.length > 0
+        ? `${snapshot.reviewResults.length} changed component${snapshot.reviewResults.length === 1 ? "" : "s"}`
+        : "No generated results yet."
+      : availabilityMessage;
+  const promptDisabled = !snapshot.agent.availability.enabled || !snapshot.agent.prompt.trim();
+  const resultsButtonMarkup = snapshot.reviewResults.length > 0 && snapshot.dockMode !== "review"
+    ? `
+      <button
+        data-variant-dock-mode="review"
+        style="${chipButtonStyle(false)}"
+      >Results</button>`
+    : "";
+  const clearAttachmentControlsMarkup = attachmentChips.length > 0
+    ? `
+      <div style="${attachmentRowStyle()}">
+        ${attachmentChipsMarkup}
+        ${snapshot.comments.length > 0 ? `
           <button
-            data-variant-dock-mode="${mode}"
-            style="${segmentedButtonStyle(snapshot.dockMode === mode)}"
-          >${escapeHtml(mode.charAt(0).toUpperCase() + mode.slice(1))}</button>
-        `).join("")}
+            data-variant-comments-clear="true"
+            style="${chipButtonStyle(false)}"
+          >Clear comments</button>` : ""}
+        ${snapshot.sketch.status === "ready" ? `
+          <button
+            data-variant-sketch-clear="true"
+            style="${chipButtonStyle(false)}"
+          >Clear sketch</button>` : ""}
+      </div>`
+    : "";
+  const promptAttachmentTabsMarkup = [
+    snapshot.comments.length > 0
+      ? renderPromptAttachmentTab({
+        kind: "comment",
+        label: `${snapshot.comments.length} comment${snapshot.comments.length === 1 ? "" : "s"}`,
+        clearAttribute: "data-variant-comments-clear",
+      })
+      : "",
+    snapshot.sketch.status === "ready"
+      ? renderPromptAttachmentTab({
+        kind: "sketch",
+        label: "Sketch attached",
+        clearAttribute: "data-variant-sketch-clear",
+      })
+      : "",
+  ].filter(Boolean).join("");
+  const promptComposerMarkup = snapshot.agent.status === "running"
+    ? `<div style="${promptComposerStyle()}">${runningProgressMarkup}</div>`
+    : `
+      <div style="${promptComposerStyle()}">
+        <div style="${promptComposerMainStyle()}">
+          ${promptAttachmentTabsMarkup ? `<div style="${promptAttachmentTabsStyle()}">${promptAttachmentTabsMarkup}</div>` : ""}
+          <textarea
+            data-variant-agent-prompt="true"
+            style="${textareaStyle()}"
+            placeholder="Implement the changes I requested above"
+          >${escapeHtml(snapshot.agent.prompt)}</textarea>
+          <button
+            data-variant-agent-run="true"
+            style="${promptSendButtonStyle(promptDisabled)}"
+            ${promptDisabled ? "disabled" : ""}
+            aria-label="Run prompt"
+            title="Run prompt"
+          >${renderPromptSendIcon()}</button>
+        </div>
+      </div>`;
+  const promptPanelMarkup = `
+      ${promptComposerMarkup}
+      <div style="${hintTextStyle()}">${escapeHtml(availabilityMessage)}</div>
+      <div style="${promptFooterStyle()}">
+        <div style="${promptFooterSelectsStyle()}">
+          <select data-variant-active-source="true" style="${selectStyle()}" ${mounted.length === 0 ? "disabled" : ""}>
+            ${componentOptions || `<option value="">No mounted components</option>`}
+          </select>
+          <select data-variant-active-choice="true" style="${selectStyle()}" ${!active ? "disabled" : ""}>
+            ${variantOptions || `<option value="">No variants</option>`}
+          </select>
+        </div>
+        <div style="${buttonRowStyle()}">
+          ${resultsButtonMarkup}
+          <button
+            data-variant-open-canvas="true"
+            style="${buttonStyle("secondary")}"
+          >Review Stack</button>
+          <button
+            data-variant-agent-clear="true"
+            style="${buttonStyle(snapshot.agent.status === "idle" ? "disabled" : "secondary")}"
+            ${snapshot.agent.status === "idle" ? "disabled" : ""}
+          >Clear</button>
+        </div>
       </div>
-      <div data-variant-agent-status="true" style="${statusPillStyle(snapshot.agent.status)}">${escapeHtml(statusText)}</div>
+      ${screenshotOptionMarkup ? `<div style="${promptAccessoryCardStyle()}">${screenshotOptionMarkup}</div>` : ""}`;
+  const reviewPanelMarkup = `
+    <div style="${sectionCardStyle()}">
+      ${reviewResultsMarkup}
     </div>
-    <div style="${rowStyle()}">
-      <select data-variant-active-source="true" style="${selectStyle()}" ${mounted.length === 0 ? "disabled" : ""}>
-        ${componentOptions || `<option value="">No mounted components</option>`}
-      </select>
-      <select data-variant-active-choice="true" style="${selectStyle()}" ${!active ? "disabled" : ""}>
-        ${variantOptions || `<option value="">No variants</option>`}
-      </select>
-    </div>
-    <div style="${metaRowStyle()}">
-      <div style="${metaTextStyle()}">${escapeHtml(availabilityMessage)}</div>
+    <div style="${buttonRowStyle()}">
+      <button
+        data-variant-dock-mode="ideate"
+        style="${buttonStyle("secondary")}"
+      >Prompt</button>
       <button
         data-variant-open-canvas="true"
-        style="${buttonStyle("secondary")}"
-      >Open Review Stack</button>
-    </div>
-    <div style="${rowStyle()}">
-      ${(["inspect", "comment", "sketch", "tweak"] as const).map((mode) => `
-        <button
-          data-variant-tool-mode="${mode}"
-          style="${toolButtonStyle(snapshot.toolMode === mode)}"
-        >${escapeHtml(mode.charAt(0).toUpperCase() + mode.slice(1))}</button>
-      `).join("")}
-      <button
-        data-variant-tool-mode="none"
-        style="${toolButtonStyle(snapshot.toolMode === "none")}"
-      >Clear Tool</button>
-    </div>
-    <div style="${hintTextStyle()}">${escapeHtml(toolSummary)}</div>
-    ${attachmentChipsMarkup ? `<div style="${attachmentRowStyle()}">${attachmentChipsMarkup}</div>` : ""}
-    ${snapshot.toolMode === "comment" || snapshot.toolMode === "sketch" ? `
-    <div style="${buttonRowStyle()}">
-      ${snapshot.toolMode === "comment" ? `
-      <button
-        data-variant-comments-clear="true"
-        style="${buttonStyle(snapshot.comments.length > 0 ? "secondary" : "disabled")}"
-        ${snapshot.comments.length > 0 ? "" : "disabled"}
-      >Clear Comments</button>` : ""}
-      ${snapshot.toolMode === "sketch" ? `
-      <button
-        data-variant-sketch-clear="true"
-        style="${buttonStyle(snapshot.sketch.status === "ready" ? "secondary" : "disabled")}"
-        ${snapshot.sketch.status === "ready" ? "" : "disabled"}
-      >Clear Sketch</button>` : ""}
-    </div>` : ""}
-    ${runningProgressMarkup}
-    ${snapshot.agent.status === "running" || snapshot.dockMode !== "ideate" ? "" : `
-    <textarea
-      data-variant-agent-prompt="true"
-      style="${textareaStyle()}"
-      placeholder="Describe the next variant direction for the active component..."
-    >${escapeHtml(snapshot.agent.prompt)}</textarea>
-    ${screenshotOptionMarkup}
-    <div style="${buttonRowStyle()}">
-      <button
-        data-variant-agent-run="true"
         style="${buttonStyle("primary")}"
-        ${!snapshot.agent.availability.enabled || !snapshot.agent.prompt.trim() ? "disabled" : ""}
-      >Ask Agent</button>
-      <button
-        data-variant-agent-clear="true"
-        style="${buttonStyle(snapshot.agent.status === "idle" ? "disabled" : "secondary")}"
-        ${snapshot.agent.status === "idle" ? "disabled" : ""}
-      >Clear</button>
-    </div>`}
-    ${snapshot.dockMode === "review" ? `
+      >Open Review Stack</button>
+    </div>`;
+  const tweakPanelMarkup = `
     <div style="${sectionCardStyle()}">
-      <div style="${sectionLabelStyle()}">Review Results</div>
-      ${reviewResultsMarkup}
-    </div>` : ""}
-    ${snapshot.dockMode === "tweak" ? `
-    <div style="${sectionCardStyle()}">
-      <div style="${sectionLabelStyle()}">Deterministic Tweaks</div>
       <div style="${hintTextStyle()}">${escapeHtml(snapshot.tweaks.targetFile ?? "Select a generated variant to inspect deterministic copy tweaks.")}</div>
       <div style="${buttonRowStyle()}">
+        ${resultsButtonMarkup}
         <button
           data-variant-tweaks-load="true"
           style="${buttonStyle(snapshot.tweaks.status === "loading" || tweakLoadDisabled ? "disabled" : "secondary")}"
@@ -1786,9 +1863,79 @@ function renderOverlay(
       </div>
       ${snapshot.tweaks.error ? `<div style="${errorNoteStyle()}">${escapeHtml(snapshot.tweaks.error)}</div>` : ""}
       ${tweakEntriesMarkup}
-    </div>` : ""}
-    ${errorSummaryMarkup}
-    ${changedFilesMarkup}
+    </div>`;
+  const trayBodyMarkup = snapshot.dockMode === "tweak"
+    ? tweakPanelMarkup
+    : snapshot.dockMode === "review" && snapshot.agent.status !== "running"
+      ? reviewPanelMarkup
+      : promptPanelMarkup;
+  const trayHeaderMarkup = snapshot.dockMode === "ideate" && snapshot.agent.status !== "running"
+    ? ""
+    : `
+      <div style="${trayHeaderStyle()}">
+        <div style="${trayHeadingStyle()}">
+          <div style="${trayEyebrowStyle()}">${escapeHtml(trayEyebrow)}</div>
+          <div style="${metaTextStyle()}">${escapeHtml(traySummary)}</div>
+        </div>
+        <div style="${trayHeaderActionsStyle()}">
+          <div data-variant-agent-status="true" style="${statusPillStyle(snapshot.agent.status)}">${escapeHtml(statusText)}</div>
+        </div>
+      </div>`;
+  const contextControlsMarkup = snapshot.dockMode === "ideate" && snapshot.agent.status !== "running"
+    ? ""
+    : `
+      <div style="${rowStyle()}">
+        <select data-variant-active-source="true" style="${selectStyle()}" ${mounted.length === 0 ? "disabled" : ""}>
+          ${componentOptions || `<option value="">No mounted components</option>`}
+        </select>
+        <select data-variant-active-choice="true" style="${selectStyle()}" ${!active ? "disabled" : ""}>
+          ${variantOptions || `<option value="">No variants</option>`}
+        </select>
+      </div>`;
+  const trayShellMarkup = snapshot.dockMode === "ideate" && snapshot.agent.status !== "running"
+    ? promptTrayStyle()
+    : panelStyle();
+
+  container.innerHTML = `
+<div style="${hudShellStyle()}">
+  <div style="${dockStageStyle(trayVisible)}">
+  <div
+    data-variant-dock-tray="true"
+    style="${floatingTrayStyle(trayVisible)}"
+  >
+    <div style="${trayShellMarkup}">
+      ${trayHeaderMarkup}
+      ${contextControlsMarkup}
+      ${snapshot.dockMode === "ideate" && snapshot.agent.status !== "running" ? "" : clearAttachmentControlsMarkup}
+      ${trayBodyMarkup}
+      ${errorSummaryMarkup}
+      ${changedFilesMarkup}
+    </div>
+  </div>
+  <div style="${dockRailStyle(trayVisible)}">
+    <div style="${dockButtonsStyle()}">
+      ${renderToolbarButton({
+        kind: "sketch",
+        active: primarySelection === "sketch",
+        badge: snapshot.sketch.status === "ready" ? "•" : null,
+      })}
+      ${renderToolbarButton({
+        kind: "comment",
+        active: primarySelection === "comment",
+        badge: snapshot.comments.length > 0 ? String(snapshot.comments.length) : null,
+      })}
+      ${renderToolbarButton({
+        kind: "tweak",
+        active: primarySelection === "tweak",
+        badge: snapshot.tweaks.entries.length > 0 ? String(snapshot.tweaks.entries.length) : null,
+      })}
+      ${renderToolbarButton({
+        kind: "prompt",
+        active: primarySelection === "prompt",
+        badge: snapshot.reviewResults.length > 0 ? String(snapshot.reviewResults.length) : null,
+      })}
+    </div>
+  </div>
   </div>
 </div>`;
 
@@ -1821,6 +1968,7 @@ function renderOverlay(
           return;
         }
         controller.actions.setDockMode(mode);
+        controller.actions.setDockExpanded(true);
       });
     });
 
@@ -1832,8 +1980,35 @@ function renderOverlay(
         if (!mode) {
           return;
         }
+        if (snapshot.toolMode === mode) {
+          controller.actions.setToolMode("none");
+          controller.actions.setDockExpanded(false);
+          return;
+        }
+
         controller.actions.setToolMode(mode);
+        controller.actions.setDockExpanded(mode === "tweak");
       });
+    });
+
+  container
+    .querySelector<HTMLButtonElement>('[data-variant-primary-tool="prompt"]')
+    ?.addEventListener("click", () => {
+      if (snapshot.agent.status === "running") {
+        return;
+      }
+
+      const ideateTrayOpen = snapshot.dockExpanded && snapshot.dockMode === "ideate" && snapshot.toolMode !== "tweak";
+      if (ideateTrayOpen) {
+        controller.actions.setDockExpanded(false);
+        return;
+      }
+
+      if (snapshot.toolMode !== "none") {
+        controller.actions.setToolMode("none");
+      }
+      controller.actions.setDockMode("ideate");
+      controller.actions.setDockExpanded(true);
     });
 
   container
@@ -2042,15 +2217,114 @@ function normalizeAgentMessageText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+type ToolbarButtonKind = "sketch" | "comment" | "tweak" | "prompt";
+
+function renderToolbarButton(input: {
+  kind: ToolbarButtonKind;
+  active: boolean;
+  badge: string | null;
+}): string {
+  const attributeName = input.kind === "prompt" ? "data-variant-primary-tool" : "data-variant-tool-mode";
+  const label = input.kind === "sketch"
+    ? "Sketch"
+    : input.kind === "comment"
+      ? "Comment"
+      : input.kind === "tweak"
+        ? "Tweak"
+        : "Prompt";
+
+  return `
+    <button
+      type="button"
+      ${attributeName}="${input.kind}"
+      aria-label="${label}"
+      aria-pressed="${input.active ? "true" : "false"}"
+      title="${label}"
+      style="${toolbarButtonStyle(input.kind, input.active)}"
+    >
+      <span aria-hidden="true" style="${toolbarButtonBaseStyle(input.active)}"></span>
+      <span aria-hidden="true" style="${toolbarIconWrapStyle(input.kind, input.active)}">
+        ${renderToolbarIcon(input.kind, input.active)}
+      </span>
+      ${input.badge ? `<span style="${toolbarBadgeStyle(input.kind)}">${escapeHtml(input.badge)}</span>` : ""}
+    </button>`;
+}
+
+function renderToolbarIcon(kind: ToolbarButtonKind, active: boolean): string {
+  const stroke = active ? toolbarAccentColor(kind) : "#5b5b60";
+
+  if (kind === "sketch") {
+    return markerIconSvg;
+  }
+
+  if (kind === "comment") {
+    return stickyIconSvg;
+  }
+
+  if (kind === "tweak") {
+    return `
+      <svg width="46" height="46" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M11.5 8.7L28.6 19.7L20.8 21.7L24.7 30.5L20.7 32.1L16.8 23.2L11.5 29.3V8.7Z" stroke="${stroke}" stroke-width="2.2" stroke-linejoin="round"/>
+      </svg>`;
+  }
+
+  return `
+    <svg width="46" height="46" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M9.6 12.3C9.6 10.7 10.9 9.4 12.5 9.4H27.5C29.1 9.4 30.4 10.7 30.4 12.3V20.4C30.4 22 29.1 23.3 27.5 23.3H21.3L15.3 28.2V23.3H12.5C10.9 23.3 9.6 22 9.6 20.4V12.3Z" stroke="${stroke}" stroke-width="2.1" stroke-linejoin="round"/>
+      <path d="M15.1 15.2H24.9" stroke="${stroke}" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M15.1 18.9H22.6" stroke="${stroke}" stroke-width="1.9" stroke-linecap="round" opacity="0.7"/>
+    </svg>`;
+}
+
+function toolbarAccentColor(kind: ToolbarButtonKind): string {
+  if (kind === "sketch") {
+    return "#7a3413";
+  }
+
+  if (kind === "comment") {
+    return "#9d4565";
+  }
+
+  if (kind === "tweak") {
+    return "#30495d";
+  }
+
+  return "#496a61";
+}
+
 function hudShellStyle(): string {
   return [
     "position:fixed",
     "left:50%",
-    "bottom:18px",
+    "bottom:22px",
     "transform:translateX(-50%)",
     `z-index:${variantOverlayZIndex}`,
     "pointer-events:none",
-    "width:min(720px,calc(100vw - 32px))",
+    "width:min(1040px,calc(100vw - 28px))",
+  ].join(";");
+}
+
+function dockStageStyle(trayVisible: boolean): string {
+  return [
+    "position:relative",
+    "display:flex",
+    "justify-content:center",
+    "width:100%",
+    trayVisible ? "padding-top:60px" : "padding-top:0",
+  ].join(";");
+}
+
+function floatingTrayStyle(visible: boolean): string {
+  return [
+    "position:relative",
+    "z-index:2",
+    "width:100%",
+    "pointer-events:none",
+    visible ? "max-height:560px" : "max-height:0",
+    visible ? "opacity:1" : "opacity:0",
+    visible ? "transform:translateY(0)" : "transform:translateY(16px)",
+    "overflow:hidden",
+    "transition:max-height 180ms ease, opacity 180ms ease, transform 180ms ease",
   ].join(";");
 }
 
@@ -2058,16 +2332,34 @@ function panelStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:10px",
+    "gap:12px",
     "width:100%",
-    "background:rgba(255,255,255,0.985)",
-    "border:1px solid rgba(148,163,184,0.28)",
-    "box-shadow:0 20px 60px rgba(15,23,42,0.16)",
-    "border-radius:22px",
-    "padding:12px",
+    "background:rgba(255,251,247,0.96)",
+    "backdrop-filter:blur(22px)",
+    "border:1px solid rgba(140,124,110,0.16)",
+    "box-shadow:0 22px 60px rgba(53,37,20,0.12)",
+    "border-radius:28px",
+    "padding:16px",
     "pointer-events:auto",
-    'font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-    "color:#0f172a",
+    "font-family:'Avenir Next','Nunito Sans','Helvetica Neue',ui-sans-serif,system-ui,sans-serif",
+    "color:#211f1d",
+  ].join(";");
+}
+
+function promptTrayStyle(): string {
+  return [
+    "display:flex",
+    "flex-direction:column",
+    "gap:14px",
+    "width:100%",
+    "padding:18px 18px 16px",
+    "border-radius:30px",
+    "border:1.5px solid rgba(21,19,17,0.94)",
+    "background:rgba(222, 36, 29, 0.97)",
+    "box-shadow:0 28px 60px rgba(80,58,34,0.16)",
+    "pointer-events:auto",
+    "font-family:'Avenir Next','Nunito Sans','Helvetica Neue',ui-sans-serif,system-ui,sans-serif",
+    "color:#211f1d",
   ].join(";");
 }
 
@@ -2075,16 +2367,46 @@ function rowStyle(): string {
   return [
     "display:flex",
     "align-items:center",
-    "gap:8px",
+    "gap:10px",
+    "flex-wrap:wrap",
   ].join(";");
 }
 
-function metaRowStyle(): string {
+function trayHeaderStyle(): string {
+  return [
+    "display:flex",
+    "align-items:flex-start",
+    "justify-content:space-between",
+    "gap:12px",
+  ].join(";");
+}
+
+function trayHeadingStyle(): string {
+  return [
+    "display:flex",
+    "flex-direction:column",
+    "gap:4px",
+    "min-width:0",
+    "flex:1",
+  ].join(";");
+}
+
+function trayEyebrowStyle(): string {
+  return [
+    "font-size:11px",
+    "font-weight:700",
+    "letter-spacing:0.14em",
+    "text-transform:uppercase",
+    "color:#8c6b52",
+  ].join(";");
+}
+
+function trayHeaderActionsStyle(): string {
   return [
     "display:flex",
     "align-items:center",
-    "justify-content:space-between",
     "gap:8px",
+    "flex-shrink:0",
   ].join(";");
 }
 
@@ -2093,6 +2415,7 @@ function buttonRowStyle(): string {
     "display:flex",
     "align-items:center",
     "justify-content:flex-end",
+    "flex-wrap:wrap",
     "gap:8px",
   ].join(";");
 }
@@ -2102,7 +2425,7 @@ function attachmentRowStyle(): string {
     "display:flex",
     "align-items:center",
     "flex-wrap:wrap",
-    "gap:6px",
+    "gap:8px",
   ].join(";");
 }
 
@@ -2110,52 +2433,138 @@ function attachmentChipStyle(): string {
   return [
     "display:inline-flex",
     "align-items:center",
-    "height:26px",
-    "padding:0 10px",
+    "height:28px",
+    "padding:0 11px",
     "border-radius:999px",
-    "background:#e0f2fe",
-    "color:#075985",
+    "background:rgba(241,233,226,0.82)",
+    "color:#6f5a49",
     "font-size:12px",
     "font-weight:700",
   ].join(";");
 }
 
-function segmentedRowStyle(): string {
+function chipButtonStyle(active: boolean): string {
   return [
     "display:inline-flex",
     "align-items:center",
-    "gap:6px",
-    "padding:4px",
+    "justify-content:center",
+    "height:28px",
+    "padding:0 11px",
     "border-radius:999px",
-    "background:#f1f5f9",
-  ].join(";");
-}
-
-function segmentedButtonStyle(active: boolean): string {
-  return [
-    "height:32px",
-    "border:none",
-    "border-radius:999px",
-    "padding:0 12px",
-    active ? "background:#0f172a" : "background:transparent",
-    active ? "color:#f8fafc" : "color:#334155",
+    active ? "border:1px solid rgba(73,106,97,0.24)" : "border:1px solid rgba(140,124,110,0.16)",
+    active ? "background:rgba(222,236,232,0.94)" : "background:rgba(255,255,255,0.72)",
+    active ? "color:#31544c" : "color:#6b625a",
     "font-size:12px",
     "font-weight:700",
     "cursor:pointer",
   ].join(";");
 }
 
-function toolButtonStyle(active: boolean): string {
+function dockRailStyle(trayVisible: boolean): string {
   return [
-    "height:30px",
-    active ? "border:1px solid #0f172a" : "border:1px solid #cbd5e1",
-    "border-radius:999px",
-    "padding:0 10px",
-    active ? "background:#e2e8f0" : "background:#fff",
-    active ? "color:#0f172a" : "color:#475569",
-    "font-size:12px",
-    "font-weight:600",
+    trayVisible ? "position:absolute" : "position:relative",
+    trayVisible ? "left:20px" : "left:auto",
+    trayVisible ? "top:0" : "top:auto",
+    "z-index:1",
+    "display:flex",
+    "align-items:flex-end",
+    "justify-content:center",
+    "padding:0",
+    "pointer-events:auto",
+    "overflow:visible",
+  ].join(";");
+}
+
+function dockButtonsStyle(): string {
+  return [
+    "display:flex",
+    "align-items:flex-end",
+    "gap:12px",
+    "overflow:visible",
+  ].join(";");
+}
+
+function toolbarButtonStyle(kind: ToolbarButtonKind, active: boolean): string {
+  return [
+    "position:relative",
+    "display:flex",
+    "align-items:flex-end",
+    "justify-content:center",
+    "width:78px",
+    active ? "height:86px" : "height:70px",
+    "padding:0",
+    "border:none",
+    "background:transparent",
+    active ? "transform:translateY(-16px)" : "transform:translateY(0)",
+    "transition:transform 180ms ease, height 180ms ease",
     "cursor:pointer",
+    "overflow:visible",
+  ].join(";");
+}
+
+function toolbarButtonBaseStyle(active: boolean): string {
+  return [
+    "position:absolute",
+    "left:50%",
+    "bottom:0",
+    "transform:translateX(-50%)",
+    "width:58px",
+    active ? "height:46px" : "height:38px",
+    "border-radius:20px",
+    active ? "background:rgba(255,255,255,0.94)" : "background:rgba(255,255,255,0.76)",
+    active ? "box-shadow:0 12px 24px rgba(53,37,20,0.1)" : "box-shadow:0 8px 18px rgba(53,37,20,0.06)",
+    "transition:height 180ms ease, background 180ms ease, box-shadow 180ms ease",
+  ].join(";");
+}
+
+function toolbarIconWrapStyle(kind: ToolbarButtonKind, active: boolean): string {
+  return [
+    "position:absolute",
+    "left:50%",
+    kind === "sketch"
+      ? active ? "top:-34px" : "top:-28px"
+      : kind === "comment"
+        ? active ? "top:-24px" : "top:-18px"
+        : active ? "top:-10px" : "top:-4px",
+    "transform:translateX(-50%)",
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+    kind === "sketch"
+      ? active ? "width:64px" : "width:56px"
+      : kind === "comment"
+        ? active ? "width:72px" : "width:62px"
+        : active ? "width:52px" : "width:46px",
+    kind === "sketch"
+      ? active ? "height:108px" : "height:96px"
+      : kind === "comment"
+        ? active ? "height:82px" : "height:72px"
+        : active ? "height:52px" : "height:46px",
+    active ? "filter:none" : kind === "sketch" || kind === "comment" ? "filter:saturate(0.82) brightness(0.98)" : "filter:none",
+    "transition:top 180ms ease, width 180ms ease, height 180ms ease, filter 180ms ease",
+  ].join(";");
+}
+
+function toolbarBadgeStyle(kind: ToolbarButtonKind): string {
+  const accent = toolbarAccentColor(kind);
+
+  return [
+    "position:absolute",
+    "right:-3px",
+    "top:-6px",
+    "display:inline-flex",
+    "align-items:center",
+    "justify-content:center",
+    "min-width:18px",
+    "height:18px",
+    "padding:0 5px",
+    "border-radius:999px",
+    `background:${accent}`,
+    "color:#fffefb",
+    "font-size:10px",
+    "font-weight:700",
+    "line-height:1",
+    "box-shadow:0 6px 14px rgba(43,34,25,0.16)",
   ].join(";");
 }
 
@@ -2166,7 +2575,7 @@ function checkboxRowStyle(disabled: boolean): string {
     "gap:8px",
     "font-size:12px",
     "line-height:1.4",
-    disabled ? "color:#94a3b8" : "color:#334155",
+    disabled ? "color:#b5a89d" : "color:#675b52",
   ].join(";");
 }
 
@@ -2174,7 +2583,7 @@ function metaTextStyle(): string {
   return [
     "font-size:12px",
     "line-height:1.4",
-    "color:#475569",
+    "color:#75695f",
     "min-width:0",
     "overflow:hidden",
     "text-overflow:ellipsis",
@@ -2186,7 +2595,7 @@ function hintTextStyle(): string {
   return [
     "font-size:11px",
     "line-height:1.4",
-    "color:#64748b",
+    "color:#8f8378",
   ].join(";");
 }
 
@@ -2194,11 +2603,11 @@ function sectionCardStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:8px",
-    "padding:10px 12px",
-    "border-radius:16px",
-    "background:#f8fafc",
-    "border:1px solid #e2e8f0",
+    "gap:10px",
+    "padding:12px",
+    "border-radius:18px",
+    "background:rgba(255,255,255,0.62)",
+    "border:1px solid rgba(140,124,110,0.12)",
   ].join(";");
 }
 
@@ -2208,7 +2617,7 @@ function sectionLabelStyle(): string {
     "font-weight:700",
     "letter-spacing:0.02em",
     "text-transform:uppercase",
-    "color:#334155",
+    "color:#6f6257",
   ].join(";");
 }
 
@@ -2224,11 +2633,11 @@ function reviewCardStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:4px",
+    "gap:5px",
     "padding:10px",
-    "border-radius:14px",
-    "background:#fff",
-    "border:1px solid #dbe4ee",
+    "border-radius:16px",
+    "background:rgba(255,255,255,0.78)",
+    "border:1px solid rgba(140,124,110,0.1)",
   ].join(";");
 }
 
@@ -2237,18 +2646,18 @@ function reviewResultTitleStyle(): string {
     "font-size:13px",
     "font-weight:700",
     "line-height:1.4",
-    "color:#0f172a",
+    "color:#2a241f",
   ].join(";");
 }
 
 function statusPillStyle(status: VariantRuntimeSnapshot["agent"]["status"]): string {
   const palette = status === "success"
-    ? { background: "#dcfce7", color: "#166534" }
+    ? { background: "#dceddf", color: "#31614e" }
     : status === "error"
-      ? { background: "#fee2e2", color: "#991b1b" }
+      ? { background: "#f9e1e6", color: "#982f58" }
       : status === "running"
-        ? { background: "#dbeafe", color: "#1d4ed8" }
-        : { background: "#e2e8f0", color: "#334155" };
+        ? { background: "#ece4d8", color: "#8a5a2a" }
+        : { background: "#eee5de", color: "#6f6257" };
 
   return [
     "display:inline-flex",
@@ -2259,7 +2668,7 @@ function statusPillStyle(status: VariantRuntimeSnapshot["agent"]["status"]): str
     `background:${palette.background}`,
     `color:${palette.color}`,
     "font-size:12px",
-    "font-weight:600",
+    "font-weight:700",
     "white-space:nowrap",
   ].join(";");
 }
@@ -2269,12 +2678,12 @@ function selectStyle(): string {
     "flex:1",
     "min-width:0",
     "max-width:100%",
-    "border:1px solid #cbd5e1",
-    "height:32px",
-    "border-radius:10px",
-    "background:#fff",
-    "color:#0f172a",
-    "padding:0 10px",
+    "border:1px solid rgba(140,124,110,0.16)",
+    "height:36px",
+    "border-radius:12px",
+    "background:rgba(255,255,255,0.74)",
+    "color:#211f1d",
+    "padding:0 12px",
     "font-size:13px",
     "outline:none",
   ].join(";");
@@ -2283,30 +2692,32 @@ function selectStyle(): string {
 function textareaStyle(): string {
   return [
     "width:100%",
-    "min-height:88px",
-    "max-height:180px",
-    "border:1px solid #cbd5e1",
-    "border-radius:12px",
-    "background:#fff",
-    "color:#0f172a",
-    "padding:10px 12px",
-    "font-size:13px",
-    "line-height:1.5",
-    "resize:vertical",
+    "min-height:96px",
+    "height:96px",
+    "max-height:112px",
+    "border:none",
+    "background:transparent",
+    "color:#383533",
+    "padding:0",
+    "padding-top:18px",
+    "font-size:24px",
+    "line-height:1.28",
+    "resize:none",
     "outline:none",
     "box-sizing:border-box",
+    "font-family:'Avenir Next','Nunito Sans','Helvetica Neue',ui-sans-serif,system-ui,sans-serif",
   ].join(";");
 }
 
 function textInputStyle(): string {
   return [
     "width:100%",
-    "height:34px",
-    "border:1px solid #cbd5e1",
-    "border-radius:10px",
-    "background:#fff",
-    "color:#0f172a",
-    "padding:0 10px",
+    "height:36px",
+    "border:1px solid rgba(140,124,110,0.16)",
+    "border-radius:12px",
+    "background:rgba(255,255,255,0.82)",
+    "color:#211f1d",
+    "padding:0 12px",
     "font-size:13px",
     "outline:none",
     "box-sizing:border-box",
@@ -2318,11 +2729,11 @@ function progressStripStyle(): string {
     "display:flex",
     "align-items:center",
     "gap:12px",
-    "min-height:44px",
+    "min-height:46px",
     "padding:0 14px",
-    "border:1px solid rgba(203,213,225,0.95)",
-    "border-radius:999px",
-    "background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%)",
+    "border:1px solid rgba(140,124,110,0.16)",
+    "border-radius:16px",
+    "background:linear-gradient(180deg,rgba(255,255,255,0.88) 0%,rgba(245,239,233,0.92) 100%)",
   ].join(";");
 }
 
@@ -2334,9 +2745,9 @@ function progressTextStyle(): string {
     "text-overflow:ellipsis",
     "white-space:nowrap",
     "font-size:13px",
-    "font-weight:600",
+    "font-weight:700",
     "line-height:1.4",
-    "background-image:linear-gradient(90deg,#475569 0%,#0f172a 20%,#64748b 45%,#0f172a 70%,#475569 100%)",
+    "background-image:linear-gradient(90deg,#7a6655 0%,#2a241f 20%,#9d7b63 45%,#2a241f 70%,#7a6655 100%)",
     "background-size:200% 100%",
     "background-clip:text",
     "-webkit-background-clip:text",
@@ -2352,8 +2763,8 @@ function spinnerStyle(): string {
     "height:16px",
     "flex-shrink:0",
     "border-radius:999px",
-    "border:2px solid rgba(148,163,184,0.35)",
-    "border-top-color:#0f172a",
+    "border:2px solid rgba(140,124,110,0.2)",
+    "border-top-color:#7a6655",
     "animation:variiant-agent-spin 0.85s linear infinite",
   ].join(";");
 }
@@ -2363,31 +2774,227 @@ function buttonStyle(kind: "primary" | "secondary" | "disabled"): string {
     return [
       "height:34px",
       "border:none",
-      "border-radius:10px",
-      "padding:0 12px",
-      "background:#e2e8f0",
-      "color:#94a3b8",
-      "font-size:13px",
-      "font-weight:600",
+      "border-radius:12px",
+      "padding:0 13px",
+      "background:#ece4de",
+      "color:#b2a39a",
+      "font-size:12px",
+      "font-weight:700",
       "cursor:not-allowed",
     ].join(";");
   }
 
   const palette = kind === "primary"
-    ? { background: "#0f172a", color: "#f8fafc", border: "none" }
-    : { background: "#fff", color: "#334155", border: "1px solid #cbd5e1" };
+    ? {
+      background: "linear-gradient(180deg,#7d756c 0%,#6b645c 100%)",
+      color: "#fffaf5",
+      border: "none",
+      shadow: "0 10px 20px rgba(74,60,49,0.18)",
+    }
+    : {
+      background: "rgba(255,255,255,0.74)",
+      color: "#5e554e",
+      border: "1px solid rgba(140,124,110,0.16)",
+      shadow: "none",
+    };
 
   return [
     "height:34px",
     `border:${palette.border}`,
-    "border-radius:10px",
-    "padding:0 12px",
+    "border-radius:12px",
+    "padding:0 13px",
     `background:${palette.background}`,
     `color:${palette.color}`,
-    "font-size:13px",
-    "font-weight:600",
+    `box-shadow:${palette.shadow}`,
+    "font-size:12px",
+    "font-weight:700",
     "cursor:pointer",
   ].join(";");
+}
+
+function promptComposerStyle(): string {
+  return [
+    "display:flex",
+    "flex-direction:column",
+    "gap:12px",
+  ].join(";");
+}
+
+function promptComposerMainStyle(): string {
+  return [
+    "position:relative",
+    "display:grid",
+    "grid-template-columns:minmax(0,1fr) auto",
+    "align-items:end",
+    "gap:18px",
+    "padding:30px",
+    "border-radius:22px",
+    "border:2px solid rgba(20,19,17,0.95)",
+    "background:rgba(251,249,247,0.98)",
+    "box-shadow:0 22px 44px rgba(80,58,34,0.12)",
+  ].join(";");
+}
+
+function promptSendButtonStyle(disabled: boolean): string {
+  return [
+    "width:96px",
+    "height:96px",
+    "border:none",
+    "border-radius:10px",
+    disabled ? "background:#c5b7ae" : "background:#873117",
+    disabled ? "color:#f4ece8" : "color:#fff8f1",
+    disabled ? "box-shadow:none" : "box-shadow:0 16px 28px rgba(135,49,23,0.24)",
+    "display:inline-flex",
+    "align-items:center",
+    "justify-content:center",
+    disabled ? "cursor:not-allowed" : "cursor:pointer",
+    "flex-shrink:0",
+    "transition:transform 180ms ease, box-shadow 180ms ease, background 180ms ease",
+  ].join(";");
+}
+
+function promptAttachmentTabsStyle(): string {
+  return [
+    "position:absolute",
+    "left:18px",
+    "top:-18px",
+    "display:flex",
+    "align-items:center",
+    "gap:10px",
+    "flex-wrap:wrap",
+  ].join(";");
+}
+
+function promptAttachmentTabStyle(kind: "comment" | "sketch"): string {
+  const palette = kind === "comment"
+    ? {
+      background: "linear-gradient(180deg,#fff2a9 0%,#f4df76 100%)",
+      border: "rgba(146,112,30,0.2)",
+      color: "#6d5115",
+    }
+    : {
+      background: "linear-gradient(180deg,#efe2d7 0%,#e7d7c8 100%)",
+      border: "rgba(122,52,19,0.18)",
+      color: "#7a3413",
+    };
+
+  return [
+    "display:flex",
+    "align-items:center",
+    "gap:8px",
+    "height:36px",
+    "padding:0 12px 0 10px",
+    "border-radius:12px 12px 14px 14px",
+    `background:${palette.background}`,
+    `border:1px solid ${palette.border}`,
+    `color:${palette.color}`,
+    "box-shadow:0 14px 24px rgba(53,37,20,0.1)",
+    "pointer-events:auto",
+  ].join(";");
+}
+
+function promptAttachmentIconStyle(kind: "comment" | "sketch"): string {
+  return [
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+    kind === "comment" ? "width:20px" : "width:18px",
+    kind === "comment" ? "height:20px" : "height:24px",
+    "flex-shrink:0",
+  ].join(";");
+}
+
+function promptAttachmentLabelStyle(): string {
+  return [
+    "font-size:12px",
+    "font-weight:700",
+    "line-height:1",
+    "white-space:nowrap",
+  ].join(";");
+}
+
+function promptAttachmentClearStyle(): string {
+  return [
+    "display:inline-flex",
+    "align-items:center",
+    "justify-content:center",
+    "width:20px",
+    "height:20px",
+    "margin-left:2px",
+    "border:none",
+    "border-radius:999px",
+    "background:rgba(255,255,255,0.42)",
+    "color:inherit",
+    "font-size:14px",
+    "line-height:1",
+    "cursor:pointer",
+    "padding:0",
+  ].join(";");
+}
+
+function promptFooterStyle(): string {
+  return [
+    "display:flex",
+    "align-items:center",
+    "justify-content:space-between",
+    "gap:12px",
+    "flex-wrap:wrap",
+  ].join(";");
+}
+
+function promptFooterSelectsStyle(): string {
+  return [
+    "display:flex",
+    "align-items:center",
+    "gap:10px",
+    "flex-wrap:wrap",
+    "flex:1",
+    "min-width:min(520px,100%)",
+  ].join(";");
+}
+
+function promptAccessoryCardStyle(): string {
+  return [
+    "display:flex",
+    "align-items:center",
+    "justify-content:space-between",
+    "gap:8px",
+    "padding:8px 4px 0",
+  ].join(";");
+}
+
+function renderPromptSendIcon(): string {
+  return `
+    <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M14 18L38.5 28L14 38V30.5L28.5 28L14 25.5V18Z" fill="currentColor"/>
+    </svg>`;
+}
+
+function renderPromptAttachmentTab(input: {
+  kind: "comment" | "sketch";
+  label: string;
+  clearAttribute: "data-variant-comments-clear" | "data-variant-sketch-clear";
+}): string {
+  return `
+    <div style="${promptAttachmentTabStyle(input.kind)}">
+      <span aria-hidden="true" style="${promptAttachmentIconStyle(input.kind)}">${renderPromptAttachmentIcon(input.kind)}</span>
+      <span style="${promptAttachmentLabelStyle()}">${escapeHtml(input.label)}</span>
+      <button
+        type="button"
+        ${input.clearAttribute}="true"
+        aria-label="Remove ${escapeHtml(input.label)}"
+        title="Remove ${escapeHtml(input.label)}"
+        style="${promptAttachmentClearStyle()}"
+      >×</button>
+    </div>`;
+}
+
+function renderPromptAttachmentIcon(kind: "comment" | "sketch"): string {
+  if (kind === "comment") {
+    return stickyIconSvg;
+  }
+
+  return markerIconSvg;
 }
 
 function errorNoteStyle(): string {
@@ -2395,11 +3002,11 @@ function errorNoteStyle(): string {
     "font-size:12px",
     "line-height:1.5",
     "word-break:break-word",
-    "border-radius:12px",
-    "background:#fff1f2",
-    "color:#9f1239",
+    "border-radius:14px",
+    "background:#fae8ee",
+    "color:#9d4565",
     "padding:10px 12px",
-    "border:1px solid #fecdd3",
+    "border:1px solid rgba(173,91,125,0.18)",
   ].join(";");
 }
 

@@ -14,9 +14,9 @@ Implement the next product phase for `@variiant-ui/react-vite`:
 
 The current repo now includes:
 
-- explicit `Ideate`, `Review`, and `Tweak` dock modes
+- an icon-first transient dock that surfaces ideation, review, and tweak workflows through compact trays
 - component-focused review results instead of page-mode comparison as the primary direction
-- contextual comments and sketch attachments in runtime state and session payloads
+- contextual comments and sketch attachments in runtime state and session payloads, with comments carrying bounded DOM/tag text context and sketch attachments rendered as viewport composites
 - copy-only deterministic tweak analysis and apply routes for generated variants
 
 The remaining work in this plan is mostly about expanding the deterministic tweak surface and tightening the overall workflow polish.
@@ -160,7 +160,7 @@ New DOM responsibilities:
 
 - hover targeting and boundary highlighting
 - comment placement
-- comment bubble rendering
+- sticky-note comment rendering near the clicked point
 - visibility-aware comment display
 - sketch canvas lifecycle
 - review result presentation

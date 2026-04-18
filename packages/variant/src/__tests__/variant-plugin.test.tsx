@@ -16,6 +16,7 @@ import {
   getVariantRuntimeState,
   installVariantOverlay,
 } from "../runtime";
+import { composeVariantSketchAttachment } from "../runtime-dom-tools";
 import { getVariantRuntimeController } from "../runtime-singleton";
 import {
   loadVariantAppConfig,
@@ -46,6 +47,13 @@ function dispatchDomEvent(target: EventTarget, event: Event): boolean {
     result = target.dispatchEvent(event);
   });
   return result;
+}
+
+function openPromptTray(): void {
+  const buttons = document.querySelectorAll('[data-variant-primary-tool="prompt"]');
+  const button = (buttons[buttons.length - 1] ?? null) as HTMLButtonElement | null;
+  expect(button).not.toBeNull();
+  fireEvent.click(button!);
 }
 
 describe("variant runtime proxy", () => {
@@ -384,6 +392,8 @@ describe("variant runtime proxy", () => {
       sourceId: "src/components/OrdersTable.tsx",
       instanceId: document.querySelector("[data-variiant-instance-id]")?.getAttribute("data-variiant-instance-id") ?? null,
       text: "Make the action label stronger.",
+      domOpeningTag: '<button class="cta" data-state="default">',
+      domTextSnippet: "Approve order",
       anchor: {
         x: 120,
         y: 80,
@@ -562,6 +572,7 @@ describe("variant runtime proxy", () => {
       }),
     );
 
+    openPromptTray();
     const picker = document.querySelector(
       '[data-variant-active-source="true"]',
     ) as HTMLSelectElement | null;
@@ -741,6 +752,7 @@ describe("variant runtime proxy", () => {
     );
 
     await screen.findAllByText(/Agent: codex exec --json/i);
+    openPromptTray();
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     prompt!.focus();
@@ -896,6 +908,7 @@ describe("variant runtime proxy", () => {
     );
 
     await screen.findByText(/Agent: claude -p --output-format stream-json/i);
+    openPromptTray();
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     fireEvent.input(prompt!, {
@@ -1006,6 +1019,7 @@ describe("variant runtime proxy", () => {
     );
 
     await screen.findAllByText(/Agent: codex exec --json/i);
+    openPromptTray();
     const checkbox = document.querySelector(
       '[data-variant-agent-attach-screenshot="true"]',
     ) as HTMLInputElement | null;
@@ -1154,12 +1168,14 @@ describe("variant runtime proxy", () => {
     );
 
     await screen.findAllByText(/Agent: codex exec --json/i);
+    openPromptTray();
     const checkbox = document.querySelector(
       '[data-variant-agent-attach-screenshot="true"]',
     ) as HTMLInputElement | null;
     expect(checkbox).not.toBeNull();
     fireEvent.click(checkbox!);
 
+    openPromptTray();
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     fireEvent.input(prompt!, {
@@ -1267,6 +1283,8 @@ describe("variant runtime proxy", () => {
       sourceId: "src/components/OrdersTable.tsx",
       instanceId: "variant-instance-1",
       text: "Tighten the CTA copy.",
+      domOpeningTag: '<button class="cta-button" type="button">',
+      domTextSnippet: "Approve order",
       anchor: {
         x: 120,
         y: 80,
@@ -1288,6 +1306,7 @@ describe("variant runtime proxy", () => {
       height: 900,
     });
 
+    openPromptTray();
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     fireEvent.input(prompt!, {
@@ -1314,6 +1333,8 @@ describe("variant runtime proxy", () => {
         id: "comment-a",
         sourceId: "src/components/OrdersTable.tsx",
         text: "Tighten the CTA copy.",
+        domOpeningTag: '<button class="cta-button" type="button">',
+        domTextSnippet: "Approve order",
       }),
     ]);
     expect(runPayload?.attachments).toEqual([
@@ -1324,6 +1345,65 @@ describe("variant runtime proxy", () => {
         dataUrl: "data:image/png;base64,c2tldGNo",
       }),
     ]);
+  });
+
+  it("composites sketch strokes over the visible app and excludes overlay chrome", async () => {
+    const toCanvasMock = vi.mocked(toCanvas);
+    toCanvasMock.mockResolvedValue(document.createElement("canvas"));
+
+    const drawImage = vi.fn();
+    const fillRect = vi.fn();
+    const beginPath = vi.fn();
+    const moveTo = vi.fn();
+    const lineTo = vi.fn();
+    const stroke = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({
+      drawImage,
+      fillRect,
+      beginPath,
+      moveTo,
+      lineTo,
+      stroke,
+      fillStyle: "#ffffff",
+      strokeStyle: "",
+      lineCap: "round",
+      lineJoin: "round",
+      lineWidth: 0,
+    }) as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockImplementation(function (this: HTMLCanvasElement) {
+      return this.dataset.variantSketchCanvas === "true"
+        ? "data:image/png;base64,cmF3LXNrZXRjaA=="
+        : "data:image/png;base64,Y29tcG9zaXRlZC1za2V0Y2g=";
+    });
+    const overlayRoot = document.createElement("div");
+    overlayRoot.dataset.variantOverlayRoot = "true";
+    document.body.appendChild(overlayRoot);
+    const toolLayer = document.createElement("div");
+    toolLayer.dataset.variantToolLayer = "true";
+    document.body.appendChild(toolLayer);
+    const sketchCanvas = document.createElement("canvas");
+    sketchCanvas.dataset.variantSketchCanvas = "true";
+    sketchCanvas.width = window.innerWidth;
+    sketchCanvas.height = window.innerHeight;
+
+    const attachment = await composeVariantSketchAttachment(sketchCanvas);
+
+    const screenshotCall = toCanvasMock.mock.calls.at(-1);
+    expect(screenshotCall?.[0]).toBe(document.body);
+    const screenshotOptions = screenshotCall?.[1] as { filter?: (node: Node) => boolean } | undefined;
+    expect(screenshotOptions?.filter).toBeDefined();
+    expect(screenshotOptions?.filter?.(overlayRoot)).toBe(false);
+    expect(screenshotOptions?.filter?.(toolLayer)).toBe(false);
+
+    expect(fillRect).toHaveBeenCalledWith(0, 0, window.innerWidth, window.innerHeight);
+    expect(drawImage).toHaveBeenCalled();
+    expect(attachment).toEqual({
+      status: "ready",
+      fileName: "sketch.png",
+      dataUrl: "data:image/png;base64,Y29tcG9zaXRlZC1za2V0Y2g=",
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
   });
 
   it("loads and applies deterministic copy tweaks from tweak mode", async () => {
@@ -1565,12 +1645,12 @@ describe("variant runtime proxy", () => {
     );
 
     await screen.findAllByText(/Agent: codex exec --json/i);
+    openPromptTray();
     const sourcePicker = document.querySelector('[data-variant-active-source="true"]') as HTMLSelectElement | null;
     expect(sourcePicker).not.toBeNull();
     fireEvent.change(sourcePicker!, {
       target: { value: "src/features/dashboard/index.tsx#Dashboard" },
     });
-
     const checkbox = document.querySelector(
       '[data-variant-agent-attach-screenshot="true"]',
     ) as HTMLInputElement | null;
@@ -2675,6 +2755,8 @@ describe("variant plugin", () => {
             sourceId: "src/components/OrdersTable.tsx",
             instanceId: "variant-instance-1",
             text: "Tighten the CTA copy.",
+            domOpeningTag: '<button class="cta-button" type="button">',
+            domTextSnippet: "Approve order",
             anchor: {
               x: 120,
               y: 80,
@@ -2724,6 +2806,8 @@ describe("variant plugin", () => {
     expect(requestPayload.comments).toEqual([
       expect.objectContaining({
         text: "Tighten the CTA copy.",
+        domOpeningTag: '<button class="cta-button" type="button">',
+        domTextSnippet: "Approve order",
       }),
     ]);
     expect(requestPayload.attachments?.[0]).toEqual(
@@ -2735,6 +2819,8 @@ describe("variant plugin", () => {
     expect(requestPayload.attachments?.[0]?.dataUrl).toBeUndefined();
     expect(promptText).toContain("## COMMENTS");
     expect(promptText).toContain("Tighten the CTA copy.");
+    expect(promptText).toContain('DOM: <button class="cta-button" type="button">');
+    expect(promptText).toContain("Current text: Approve order");
     expect(promptText).toContain("## SCREENSHOTS");
   });
 

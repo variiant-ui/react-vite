@@ -9,9 +9,9 @@ It lets you accumulate multiple implementations of the same component and switch
 The package currently gives you:
 
 - live runtime switching between source and variant implementations
-- a transient in-browser runtime surface with `Ideate`, `Review`, and `Tweak` modes
+- a transient in-browser runtime surface with an icon-first tool dock for prompt, comment, sketch, and tweak workflows
 - a fullscreen comparison canvas
-- contextual comments and sketch attachments for richer ideation sessions
+- contextual comments and sketch attachments for richer ideation sessions, with comments carrying bounded DOM/tag text context and sketches composited over the visible app viewport
 - copy-only deterministic tweaks for active generated variants
 - a local agent bridge that creates or edits variant files under `.variiant/variants/`
 
@@ -19,8 +19,8 @@ The package currently gives you:
 
 The product direction is moving toward three clearer workflows:
 
-- `Ideate`: prompt on the live page with richer context
-- `Review`: understand and compare generated results more clearly
+- `Ideate`: prompt on the live page with richer context, opened from the prompt tool in the dock
+- `Review`: understand and compare generated results more clearly through the prompt tray and focused review stack
 - `Tweak`: make bounded follow-up edits without another full prompt
 
 That direction does not change the integration story. It changes how the runtime feels in the browser.

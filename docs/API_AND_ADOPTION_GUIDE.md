@@ -33,10 +33,10 @@ That remains the whole integration surface.
 
 Today the package ships:
 
-- a transient in-browser overlay with explicit `Ideate`, `Review`, and `Tweak` modes
+- a transient in-browser overlay with an icon-first dock that opens prompt, review, and tweak trays without turning into a persistent sidebar
 - keyboard shortcuts for overlay/canvas toggling and variant navigation
 - a fullscreen comparison canvas
-- contextual comments and sketch attachments for ideation sessions
+- contextual comments and sketch attachments for ideation sessions, with comments carrying bounded DOM/tag text context and sketches composited over the visible viewport instead of sent as raw strokes
 - copy-only deterministic tweak support for generated variants
 - local agent bridge support for creating and editing variant files
 
@@ -45,7 +45,7 @@ Today the package ships:
 The product direction is now concretely organized around three workflows:
 
 - `Ideate`: prompt + contextual comments + sketch attachment + component targeting
-- `Review`: clearer result presentation on the live page and in a focused component comparison surface
+- `Review`: clearer result presentation in the prompt tray and in a focused component comparison surface
 - `Tweak`: deterministic post-generation edits such as copy changes and later bounded Tailwind/token adjustments
 
 This direction does not change the package installation or import model. It changes the browser workflow layered on top of the same runtime and plugin architecture.

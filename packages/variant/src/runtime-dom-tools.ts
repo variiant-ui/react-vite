@@ -1,3 +1,4 @@
+import { toCanvas } from "html-to-image";
 import type {
   VariantComment,
   VariantCommentAnchor,
@@ -8,7 +9,6 @@ import type {
 } from "./runtime-core";
 import {
   escapeAttributeValue,
-  formatCanvasGroupLabel,
   getRenderableComponentRect,
 } from "./runtime-dom-shared";
 
@@ -16,15 +16,24 @@ type VariantHoverTarget = {
   sourceId: string;
   instanceId: string | null;
   displayName: string;
+  domOpeningTag: string | null;
+  domTextSnippet: string | null;
   anchor: VariantCommentAnchor;
   viewportPoint: VariantCommentViewportPoint;
   visibilityKey: string | null;
 };
 
+const maxCommentDomOpeningTagLength = 240;
+const maxCommentDomTextLength = 280;
+const maxCommentDomAttributeValueLength = 80;
+const maxCommentDomAttributes = 8;
+const commentNoteWidth = 220;
+const commentNoteMinHeight = 138;
+const commentNoteGap = 12;
+const commentNoteViewportPadding = 16;
+
 type VariantCommentBubbleDom = {
   root: HTMLDivElement;
-  indexBadge: HTMLDivElement;
-  label: HTMLDivElement;
   textarea: HTMLTextAreaElement;
 };
 
@@ -224,6 +233,8 @@ function getOrCreateToolDomState(
       sourceId: state.hoveredTarget.sourceId,
       instanceId: state.hoveredTarget.instanceId,
       text: "",
+      domOpeningTag: state.hoveredTarget.domOpeningTag,
+      domTextSnippet: state.hoveredTarget.domTextSnippet,
       anchor: state.hoveredTarget.anchor,
       viewportPoint: state.hoveredTarget.viewportPoint,
       visibilityKey: state.hoveredTarget.visibilityKey,
@@ -337,6 +348,8 @@ function resolveHoverTarget(
       sourceId: boundary.dataset.variiantSourceId ?? "",
       instanceId: boundary.dataset.variiantInstanceId ?? null,
       displayName: boundary.dataset.variiantDisplayName ?? boundary.dataset.variiantSourceId ?? "Component",
+      domOpeningTag: getCommentTargetOpeningTag(candidate),
+      domTextSnippet: getCommentTargetTextSnippet(candidate),
       anchor: {
         x: rect.left,
         y: rect.top,
@@ -352,6 +365,70 @@ function resolveHoverTarget(
   }
 
   return null;
+}
+
+function getCommentTargetOpeningTag(element: HTMLElement): string | null {
+  const prioritizedAttributes = [
+    "class",
+    "id",
+    "data-testid",
+    "data-state",
+    "data-slot",
+    "role",
+    "type",
+    "name",
+    "aria-label",
+    "href",
+  ];
+  const attributeNames = element.getAttributeNames();
+  const orderedNames = [
+    ...prioritizedAttributes.filter((name) => attributeNames.includes(name)),
+    ...attributeNames
+      .filter((name) => !prioritizedAttributes.includes(name))
+      .sort((left, right) => left.localeCompare(right)),
+  ].slice(0, maxCommentDomAttributes);
+  const renderedAttributes = orderedNames
+    .map((name) => {
+      const value = element.getAttribute(name);
+      if (value === null) {
+        return null;
+      }
+
+      return `${name}="${truncateCommentDomValue(normalizeCommentDomWhitespace(value), maxCommentDomAttributeValueLength)}"`;
+    })
+    .filter((value): value is string => Boolean(value));
+  const openingTag = `<${element.tagName.toLowerCase()}${renderedAttributes.length > 0 ? ` ${renderedAttributes.join(" ")}` : ""}>`;
+  return truncateCommentDomValue(openingTag, maxCommentDomOpeningTagLength);
+}
+
+function getCommentTargetTextSnippet(element: HTMLElement): string | null {
+  let rawText = "";
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    rawText = element.value;
+  } else if (element instanceof HTMLSelectElement) {
+    rawText = element.value || element.options[element.selectedIndex]?.text || "";
+  } else {
+    rawText = element.textContent ?? "";
+  }
+
+  const normalizedText = normalizeCommentDomWhitespace(rawText);
+  if (!normalizedText) {
+    return null;
+  }
+
+  return truncateCommentDomValue(normalizedText, maxCommentDomTextLength);
+}
+
+function normalizeCommentDomWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function truncateCommentDomValue(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
 function syncCommentBubbles(
@@ -378,23 +455,26 @@ function syncCommentBubbles(
     state.commentBubbles.delete(commentId);
   }
 
-  for (const [index, comment] of snapshot.comments.entries()) {
-    const placement = getCommentPlacement(comment);
+  const occupiedRects: Array<{ left: number; top: number; width: number; height: number }> = [];
+  for (const comment of snapshot.comments) {
     const bubble = getOrCreateCommentBubble(state, comment.id, controller);
-    bubble.indexBadge.textContent = String(index + 1);
-    bubble.label.textContent = placement?.label ?? "";
-
-    if (placement) {
-      bubble.root.style.display = "flex";
-      bubble.root.style.left = `${placement.left}px`;
-      bubble.root.style.top = `${placement.top}px`;
-    } else {
-      bubble.root.style.display = "none";
-    }
 
     if (document.activeElement !== bubble.textarea && bubble.textarea.value !== comment.text) {
       bubble.textarea.value = comment.text;
     }
+
+    const placement = getCommentPlacement(comment, occupiedRects);
+    if (!placement) {
+      bubble.root.style.display = "none";
+      continue;
+    }
+
+    bubble.root.style.display = "flex";
+    bubble.root.style.left = `${placement.left}px`;
+    bubble.root.style.top = `${placement.top}px`;
+    bubble.root.style.height = `${placement.height}px`;
+    bubble.root.style.transform = `rotate(${getCommentRotationDegrees(comment.id)}deg)`;
+    occupiedRects.push(placement);
   }
 
   if (state.focusedCommentId) {
@@ -421,33 +501,6 @@ function getOrCreateCommentBubble(
   root.dataset.variantCommentBubble = commentId;
   root.style.cssText = commentBubbleStyle();
 
-  const header = document.createElement("div");
-  header.style.cssText = commentBubbleHeaderStyle();
-
-  const indexBadge = document.createElement("div");
-  indexBadge.style.cssText = commentIndexStyle();
-
-  const label = document.createElement("div");
-  label.style.cssText = commentLabelStyle();
-
-  const removeButton = document.createElement("button");
-  removeButton.type = "button";
-  removeButton.textContent = "Remove";
-  removeButton.dataset.variantCommentRemove = commentId;
-  removeButton.style.cssText = commentRemoveButtonStyle();
-  removeButton.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    controller.actions.removeComment(commentId);
-    if (state.focusedCommentId === commentId) {
-      state.focusedCommentId = null;
-    }
-  });
-
-  header.appendChild(indexBadge);
-  header.appendChild(label);
-  header.appendChild(removeButton);
-
   const textarea = document.createElement("textarea");
   textarea.dataset.variantCommentInput = commentId;
   textarea.placeholder = "Add contextual direction for this area...";
@@ -457,25 +510,36 @@ function getOrCreateCommentBubble(
     controller.actions.updateComment(commentId, target.value);
     state.focusedCommentId = commentId;
   });
+  textarea.addEventListener("blur", () => {
+    if (textarea.value.trim()) {
+      return;
+    }
 
-  root.appendChild(header);
+    controller.actions.removeComment(commentId);
+    if (state.focusedCommentId === commentId) {
+      state.focusedCommentId = null;
+    }
+  });
+
   root.appendChild(textarea);
   state.commentsLayer.appendChild(root);
 
   const bubble: VariantCommentBubbleDom = {
     root,
-    indexBadge,
-    label,
     textarea,
   };
   state.commentBubbles.set(commentId, bubble);
   return bubble;
 }
 
-function getCommentPlacement(comment: VariantComment): {
+function getCommentPlacement(
+  comment: VariantComment,
+  occupiedRects: Array<{ left: number; top: number; width: number; height: number }>,
+): {
   left: number;
   top: number;
-  label: string;
+  width: number;
+  height: number;
 } | null {
   const boundary = resolveCommentBoundary(comment);
   if (!boundary) {
@@ -487,11 +551,105 @@ function getCommentPlacement(comment: VariantComment): {
     return null;
   }
 
+  return placeCommentNearViewportPoint(comment.viewportPoint, estimateCommentNoteHeight(comment.text), occupiedRects);
+}
+
+function placeCommentNearViewportPoint(
+  viewportPoint: VariantCommentViewportPoint,
+  height: number,
+  occupiedRects: Array<{ left: number; top: number; width: number; height: number }>,
+): { left: number; top: number; width: number; height: number } {
+  const width = commentNoteWidth;
+  const x = Number.isFinite(viewportPoint.x) ? viewportPoint.x : commentNoteViewportPadding;
+  const y = Number.isFinite(viewportPoint.y) ? viewportPoint.y : commentNoteViewportPadding;
+  const candidatePositions: Array<{ left: number; top: number }> = [
+    { left: x + commentNoteGap, top: y - 10 },
+    { left: x - width - commentNoteGap, top: y - 10 },
+    { left: x + commentNoteGap, top: y - height - commentNoteGap },
+    { left: x - width - commentNoteGap, top: y - height - commentNoteGap },
+  ];
+
+  for (let row = 1; row <= 12; row += 1) {
+    const downOffset = row * (height + commentNoteGap);
+    const upOffset = row * (height + commentNoteGap);
+    candidatePositions.push(
+      { left: x + commentNoteGap, top: y - 10 + downOffset },
+      { left: x - width - commentNoteGap, top: y - 10 + downOffset },
+      { left: x + commentNoteGap, top: y - 10 - upOffset },
+      { left: x - width - commentNoteGap, top: y - 10 - upOffset },
+    );
+  }
+
+  for (const candidate of candidatePositions) {
+    const placed = clampCommentRect(candidate.left, candidate.top, width, height);
+    if (!rectIntersectsAny(placed, occupiedRects)) {
+      return placed;
+    }
+  }
+
+  return clampCommentRect(x + commentNoteGap, y - 10, width, height);
+}
+
+function clampCommentRect(
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+): { left: number; top: number; width: number; height: number } {
+  const maxLeft = Math.max(commentNoteViewportPadding, window.innerWidth - width - commentNoteViewportPadding);
+  const maxTop = Math.max(commentNoteViewportPadding, window.innerHeight - height - commentNoteViewportPadding);
   return {
-    left: Math.min(window.innerWidth - 324, rect.left + rect.width + 12),
-    top: Math.max(12, rect.top),
-    label: boundary.dataset.variiantDisplayName ?? formatCanvasGroupLabel(comment.sourceId),
+    left: clamp(left, commentNoteViewportPadding, maxLeft),
+    top: clamp(top, commentNoteViewportPadding, maxTop),
+    width,
+    height,
   };
+}
+
+function rectIntersectsAny(
+  target: { left: number; top: number; width: number; height: number },
+  occupiedRects: Array<{ left: number; top: number; width: number; height: number }>,
+): boolean {
+  return occupiedRects.some((candidate) => rectsIntersect(target, candidate));
+}
+
+function rectsIntersect(
+  left: { left: number; top: number; width: number; height: number },
+  right: { left: number; top: number; width: number; height: number },
+): boolean {
+  return !(
+    left.left + left.width + commentNoteGap <= right.left
+    || right.left + right.width + commentNoteGap <= left.left
+    || left.top + left.height + commentNoteGap <= right.top
+    || right.top + right.height + commentNoteGap <= left.top
+  );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function estimateCommentNoteHeight(text: string): number {
+  const normalized = text.trim();
+  if (!normalized) {
+    return commentNoteMinHeight;
+  }
+
+  const explicitLines = normalized.split("\n");
+  const wrappedLineCount = explicitLines.reduce((sum, line) => {
+    const lineLength = normalizeCommentDomWhitespace(line).length;
+    return sum + Math.max(1, Math.ceil(lineLength / 22));
+  }, 0);
+  return Math.max(commentNoteMinHeight, 36 + wrappedLineCount * 24);
+}
+
+function getCommentRotationDegrees(commentId: string): number {
+  let hash = 0;
+  for (let index = 0; index < commentId.length; index += 1) {
+    hash = (hash * 31 + commentId.charCodeAt(index)) % 997;
+  }
+
+  return ((hash % 7) - 3) * 0.45;
 }
 
 function resolveCommentBoundary(comment: VariantComment): HTMLElement | null {
@@ -574,14 +732,14 @@ function syncSketchAttachmentFromCanvas(
     return;
   }
 
-  const attachment: VariantSketchAttachment = {
-    status: "ready",
-    fileName: "sketch.png",
-    dataUrl: state.sketchCanvas.toDataURL("image/png"),
-    width: state.sketchCanvas.width,
-    height: state.sketchCanvas.height,
-  };
-  controller.actions.setSketchAttachment(attachment);
+  void (async () => {
+    try {
+      const attachment = await composeVariantSketchAttachment(state.sketchCanvas);
+      controller.actions.setSketchAttachment(attachment);
+    } catch {
+      controller.actions.setSketchAttachment(buildRawSketchAttachment(state.sketchCanvas));
+    }
+  })();
 }
 
 function clearSketchCanvas(
@@ -599,84 +757,125 @@ function clearSketchCanvas(
   controller.actions.clearSketchAttachment();
 }
 
+function buildRawSketchAttachment(sketchCanvas: HTMLCanvasElement): VariantSketchAttachment {
+  return {
+    status: "ready",
+    fileName: "sketch.png",
+    dataUrl: sketchCanvas.toDataURL("image/png"),
+    width: sketchCanvas.width,
+    height: sketchCanvas.height,
+  };
+}
+
+export async function composeVariantSketchAttachment(
+  sketchCanvas: HTMLCanvasElement,
+): Promise<VariantSketchAttachment> {
+  const documentWidth = getDocumentCaptureWidth();
+  const documentHeight = getDocumentCaptureHeight();
+  const viewportWidth = sketchCanvas.width;
+  const viewportHeight = sketchCanvas.height;
+  const documentCanvas = await toCanvas(document.body, {
+    backgroundColor: "#ffffff",
+    cacheBust: true,
+    pixelRatio: 1,
+    width: documentWidth,
+    height: documentHeight,
+    canvasWidth: documentWidth,
+    canvasHeight: documentHeight,
+    skipAutoScale: true,
+    filter: (node) => !(
+      node instanceof HTMLElement
+      && (
+        node.dataset.variantOverlayRoot === "true"
+        || node.dataset.variantToolLayer === "true"
+        || node.dataset.variiantCanvasFullscreen === "true"
+      )
+    ),
+  });
+
+  const compositeCanvas = document.createElement("canvas");
+  compositeCanvas.width = viewportWidth;
+  compositeCanvas.height = viewportHeight;
+  const context = compositeCanvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas 2D context unavailable.");
+  }
+
+  const cropLeft = Math.max(0, Math.floor(window.scrollX));
+  const cropTop = Math.max(0, Math.floor(window.scrollY));
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, viewportWidth, viewportHeight);
+  context.drawImage(
+    documentCanvas,
+    cropLeft,
+    cropTop,
+    viewportWidth,
+    viewportHeight,
+    0,
+    0,
+    viewportWidth,
+    viewportHeight,
+  );
+  context.drawImage(sketchCanvas, 0, 0);
+
+  return {
+    status: "ready",
+    fileName: "sketch.png",
+    dataUrl: compositeCanvas.toDataURL("image/png"),
+    width: viewportWidth,
+    height: viewportHeight,
+  };
+}
+
+function getDocumentCaptureWidth(): number {
+  return Math.max(
+    document.documentElement.scrollWidth,
+    document.documentElement.clientWidth,
+    document.body.scrollWidth,
+    document.body.clientWidth,
+  );
+}
+
+function getDocumentCaptureHeight(): number {
+  return Math.max(
+    document.documentElement.scrollHeight,
+    document.documentElement.clientHeight,
+    document.body.scrollHeight,
+    document.body.clientHeight,
+  );
+}
+
 function commentBubbleStyle(): string {
   return [
     "position:fixed",
     "display:flex",
-    "flex-direction:column",
-    "gap:8px",
-    "width:312px",
-    "padding:12px",
-    "border-radius:16px",
-    "border:1px solid rgba(248,113,113,0.32)",
-    "background:rgba(15,23,42,0.92)",
-    "box-shadow:0 18px 48px rgba(15,23,42,0.28)",
-    "pointer-events:auto",
-    "color:#f8fafc",
-    "backdrop-filter:blur(18px)",
-  ].join(";");
-}
-
-function commentBubbleHeaderStyle(): string {
-  return [
-    "display:flex",
-    "align-items:center",
-    "gap:8px",
-  ].join(";");
-}
-
-function commentIndexStyle(): string {
-  return [
-    "display:inline-flex",
-    "align-items:center",
-    "justify-content:center",
-    "min-width:24px",
-    "height:24px",
-    "padding:0 8px",
-    "border-radius:999px",
-    "background:rgba(239,68,68,0.18)",
-    "color:#fecaca",
-    "font:600 11px/1.2 Inter, sans-serif",
-    "letter-spacing:0.08em",
-    "text-transform:uppercase",
-  ].join(";");
-}
-
-function commentLabelStyle(): string {
-  return [
-    "flex:1",
-    "min-width:0",
-    "font:600 12px/1.4 Inter, sans-serif",
-    "color:#e2e8f0",
-    "white-space:nowrap",
-    "overflow:hidden",
-    "text-overflow:ellipsis",
-  ].join(";");
-}
-
-function commentRemoveButtonStyle(): string {
-  return [
-    "border:0",
-    "background:transparent",
-    "color:#fca5a5",
-    "font:600 11px/1.2 Inter, sans-serif",
-    "cursor:pointer",
+    `width:${commentNoteWidth}px`,
+    `min-height:${commentNoteMinHeight}px`,
     "padding:0",
+    "border-radius:14px",
+    "border:1px solid rgba(138,99,26,0.18)",
+    "background:linear-gradient(180deg, #fff3a8 0%, #f4df73 100%)",
+    "box-shadow:0 18px 38px rgba(99,70,18,0.22), 0 2px 0 rgba(255,255,255,0.35) inset",
+    "pointer-events:auto",
+    "overflow:hidden",
+    "transform-origin:50% 100%",
   ].join(";");
 }
 
 function commentTextareaStyle(): string {
   return [
     "width:100%",
-    "min-height:108px",
-    "padding:12px 14px",
-    "border-radius:12px",
-    "border:1px solid rgba(148,163,184,0.24)",
-    "background:rgba(15,23,42,0.48)",
-    "color:#f8fafc",
-    "font:500 13px/1.5 Inter, sans-serif",
-    "resize:vertical",
+    "height:100%",
+    "padding:18px 18px 16px",
+    "border:0",
+    "background:transparent",
+    "color:#5a4212",
+    "font:500 16px/1.45 \"Marker Felt\", \"Comic Sans MS\", \"Segoe Print\", cursive",
+    "letter-spacing:0.01em",
+    "resize:none",
     "outline:none",
     "box-sizing:border-box",
+    "overflow:hidden",
   ].join(";");
 }

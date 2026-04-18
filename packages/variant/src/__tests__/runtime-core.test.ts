@@ -159,6 +159,8 @@ describe("variant runtime controller", () => {
       sourceId: "src/components/OrdersTable.tsx",
       instanceId: "variant-instance-1",
       text: "Make this row density tighter.",
+      domOpeningTag: '<button class="cta-button">',
+      domTextSnippet: "Approve order",
       anchor: {
         x: 24,
         y: 80,
@@ -186,6 +188,8 @@ describe("variant runtime controller", () => {
         id: "comment-1",
         text: "Make this row density much tighter.",
         sourceId: "src/components/OrdersTable.tsx",
+        domOpeningTag: '<button class="cta-button">',
+        domTextSnippet: "Approve order",
       }),
     ]);
     expect(controller.getSnapshot().sketch).toEqual({
