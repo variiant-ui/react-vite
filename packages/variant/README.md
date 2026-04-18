@@ -41,7 +41,7 @@ export default defineConfig({
 
 ## Local proving workflow
 
-When this package is linked from a local checkout, the development bootstrap prefers the package source runtime when `src/runtime-api.ts` is available.
+When this package is linked from a local checkout, the development bootstrap prefers the package source runtime when `src/runtime.tsx` is available.
 
 That keeps the proving loop tighter:
 

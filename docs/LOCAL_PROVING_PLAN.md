@@ -55,7 +55,7 @@ npm install --install-links /Users/darko/personal/variant/packages/variant
 npm exec variiant init
 ```
 
-Runtime proving now prefers the local package source runtime automatically when the linked checkout includes `packages/variant/src/runtime-api.ts`.
+Runtime proving now prefers the local package source runtime automatically when the linked checkout includes `packages/variant/src/runtime.tsx`.
 
 That means:
 

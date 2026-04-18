@@ -170,7 +170,7 @@ The live page should remain interactive except while sketch mode is active.
 
 ## Local proving support
 
-The dev bootstrap should prefer the package source runtime when the package is linked from a local checkout and `src/runtime-api.ts` is present.
+The dev bootstrap should prefer the package source runtime when the package is linked from a local checkout and `src/runtime.tsx` is present.
 
 That keeps the proving workflow honest:
 

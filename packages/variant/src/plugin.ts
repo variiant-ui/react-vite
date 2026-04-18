@@ -85,7 +85,7 @@ const variantPackageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.u
 const packagedRuntimeImportPath = "@variiant-ui/react-vite/runtime";
 
 export function resolveDevelopmentRuntimeImport(packageRoot = variantPackageRoot): string {
-  const runtimeSourcePath = path.join(packageRoot, "src", "runtime-api.ts");
+  const runtimeSourcePath = path.join(packageRoot, "src", "runtime.tsx");
   if (fs.existsSync(runtimeSourcePath)) {
     return toViteFsImportPath(runtimeSourcePath);
   }
@@ -1518,10 +1518,11 @@ function ensureTargetEntry(
 }
 
 function buildDevelopmentProxyModule(entry: VariantRegistryEntry): string {
+  const runtimeImportPath = resolveDevelopmentRuntimeImport();
   const importLines = [
     `export * from ${JSON.stringify(entry.sourceImportPath)};`,
     `import * as SourceModule from ${JSON.stringify(entry.sourceImportPath)};`,
-    `import { createVariantProxy, installVariantOverlay } from "@variiant-ui/react-vite/runtime";`,
+    `import { createVariantProxy, installVariantOverlay } from ${JSON.stringify(runtimeImportPath)};`,
   ];
   const outputLines: string[] = ["installVariantOverlay();"];
 

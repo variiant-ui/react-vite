@@ -1727,7 +1727,7 @@ describe("variant plugin", () => {
     );
 
     expect(String(loaded)).toMatch(
-      /import \{ installVariantOverlay \} from "(?:\/@fs\/.*\/src\/runtime-api\.ts|@variiant-ui\/react-vite\/runtime)";/,
+      /import \{ installVariantOverlay \} from "(?:\/@fs\/.*\/src\/runtime\.tsx|@variiant-ui\/react-vite\/runtime)";/,
     );
     expect(String(loaded)).toContain("installVariantOverlay();");
   });
@@ -1735,14 +1735,14 @@ describe("variant plugin", () => {
   it("prefers the local source runtime during proving and falls back to the packaged runtime otherwise", () => {
     const localPackageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-local-runtime-"));
     fs.mkdirSync(path.join(localPackageRoot, "src"), { recursive: true });
-    fs.writeFileSync(path.join(localPackageRoot, "src", "runtime-api.ts"), "export function installVariantOverlay(){}");
+    fs.writeFileSync(path.join(localPackageRoot, "src", "runtime.tsx"), "export function installVariantOverlay(){}");
 
     const packagedOnlyRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-packaged-runtime-"));
     fs.mkdirSync(path.join(packagedOnlyRoot, "dist"), { recursive: true });
     fs.writeFileSync(path.join(packagedOnlyRoot, "dist", "runtime.js"), "export function installVariantOverlay(){}");
 
     expect(resolveDevelopmentRuntimeImport(localPackageRoot)).toBe(
-      `/@fs/${path.join(localPackageRoot, "src", "runtime-api.ts").split(path.sep).join("/")}`,
+      `/@fs/${path.join(localPackageRoot, "src", "runtime.tsx").split(path.sep).join("/")}`,
     );
     expect(resolveDevelopmentRuntimeImport(packagedOnlyRoot)).toBe("@variiant-ui/react-vite/runtime");
   });
