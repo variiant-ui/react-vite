@@ -39,6 +39,37 @@ export type VariantCanvasMode = "components";
 export type VariantDockMode = "ideate" | "review" | "tweak";
 export type VariantToolMode = "none" | "inspect" | "comment" | "sketch" | "tweak";
 
+export type VariantCommentAnchor = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type VariantCommentViewportPoint = {
+  x: number;
+  y: number;
+};
+
+export type VariantComment = {
+  id: string;
+  sourceId: string;
+  instanceId: string | null;
+  text: string;
+  anchor: VariantCommentAnchor;
+  viewportPoint: VariantCommentViewportPoint;
+  visibilityKey: string | null;
+  createdAt: number;
+};
+
+export type VariantSketchAttachment = {
+  status: "empty" | "ready";
+  fileName: string | null;
+  dataUrl: string | null;
+  width: number | null;
+  height: number | null;
+};
+
 export type VariantCanvasCamera = {
   x: number;
   y: number;
@@ -109,6 +140,8 @@ export type RuntimeState = {
   mountedInstances: MountedVariantInstance[];
   canvas: VariantCanvasState;
   agent: VariantAgentState;
+  comments: VariantComment[];
+  sketch: VariantSketchAttachment;
   reviewResults: VariantReviewResult[];
 };
 
@@ -170,6 +203,12 @@ export type VariantRuntimeController = {
     ) => void;
     setAgentPrompt: (prompt: string) => void;
     setAgentAttachActiveComponentScreenshot: (enabled: boolean) => void;
+    upsertComment: (comment: VariantComment) => void;
+    updateComment: (id: string, text: string) => void;
+    removeComment: (id: string) => void;
+    clearComments: () => void;
+    setSketchAttachment: (attachment: VariantSketchAttachment) => void;
+    clearSketchAttachment: () => void;
     startAgentRun: () => void;
     appendAgentLog: (stream: VariantAgentLogEntry["stream"], text: string) => void;
     replaceLatestAgentLog: (stream: VariantAgentLogEntry["stream"], text: string) => void;
@@ -373,6 +412,14 @@ export function createVariantRuntimeController(options: {
       changedFiles: [],
       error: null,
     },
+    comments: [],
+    sketch: {
+      status: "empty",
+      fileName: null,
+      dataUrl: null,
+      width: null,
+      height: null,
+    },
     reviewResults: [],
     selections: storage?.readSelections() ?? {},
     temporarySelections: null,
@@ -420,6 +467,8 @@ export function createVariantRuntimeController(options: {
       mountedInstances: state.mountedInstances,
       canvas: state.canvas,
       agent: state.agent,
+      comments: state.comments,
+      sketch: state.sketch,
       reviewResults: state.reviewResults,
       selections: state.selections,
       temporarySelections: state.temporarySelections,
@@ -765,6 +814,68 @@ export function createVariantRuntimeController(options: {
       },
       setAgentAttachActiveComponentScreenshot(enabled) {
         state.agent.attachActiveComponentScreenshot = enabled;
+        emit();
+      },
+      upsertComment(comment) {
+        const existingIndex = state.comments.findIndex((entry) => entry.id === comment.id);
+        if (existingIndex === -1) {
+          state.comments = [...state.comments, comment].sort((left, right) => left.createdAt - right.createdAt);
+          emit();
+          return;
+        }
+
+        const nextComments = [...state.comments];
+        nextComments[existingIndex] = comment;
+        state.comments = nextComments;
+        emit();
+      },
+      updateComment(id, text) {
+        const existingIndex = state.comments.findIndex((entry) => entry.id === id);
+        if (existingIndex === -1) {
+          return;
+        }
+
+        const nextComments = [...state.comments];
+        nextComments[existingIndex] = {
+          ...nextComments[existingIndex]!,
+          text,
+        };
+        state.comments = nextComments;
+        emit();
+      },
+      removeComment(id) {
+        const nextComments = state.comments.filter((entry) => entry.id !== id);
+        if (nextComments.length === state.comments.length) {
+          return;
+        }
+
+        state.comments = nextComments;
+        emit();
+      },
+      clearComments() {
+        if (state.comments.length === 0) {
+          return;
+        }
+
+        state.comments = [];
+        emit();
+      },
+      setSketchAttachment(attachment) {
+        state.sketch = attachment;
+        emit();
+      },
+      clearSketchAttachment() {
+        if (state.sketch.status === "empty") {
+          return;
+        }
+
+        state.sketch = {
+          status: "empty",
+          fileName: null,
+          dataUrl: null,
+          width: null,
+          height: null,
+        };
         emit();
       },
       startAgentRun() {

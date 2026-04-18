@@ -15,6 +15,37 @@ function getMaterializedAttachmentPaths(requestPayload: Record<string, unknown>)
     .map((a) => a.path);
 }
 
+function getPromptComments(requestPayload: Record<string, unknown>): Array<{
+  id: string;
+  sourceId: string;
+  instanceId: string | null;
+  text: string;
+  anchor: string;
+}> {
+  const comments = Array.isArray(requestPayload.comments) ? requestPayload.comments : [];
+  return comments
+    .filter(isRecord)
+    .map((comment, index) => {
+      const anchor = isRecord(comment.anchor)
+        ? [
+            typeof comment.anchor.x === "number" ? `x=${comment.anchor.x}` : null,
+            typeof comment.anchor.y === "number" ? `y=${comment.anchor.y}` : null,
+            typeof comment.anchor.width === "number" ? `w=${comment.anchor.width}` : null,
+            typeof comment.anchor.height === "number" ? `h=${comment.anchor.height}` : null,
+          ].filter(Boolean).join(", ")
+        : "";
+
+      return {
+        id: typeof comment.id === "string" ? comment.id : `comment-${index + 1}`,
+        sourceId: typeof comment.sourceId === "string" ? comment.sourceId : "unknown",
+        instanceId: typeof comment.instanceId === "string" ? comment.instanceId : null,
+        text: typeof comment.text === "string" ? comment.text.trim() : "",
+        anchor,
+      };
+    })
+    .filter((comment) => comment.text.length > 0);
+}
+
 export function buildAgentPrompt(
   projectRoot: string,
   sessionId: string,
@@ -23,13 +54,17 @@ export function buildAgentPrompt(
   const sessionRelativePath = `${variantSessionsDir}/${sessionId}`;
   const prompt = typeof requestPayload.prompt === "string" ? requestPayload.prompt : "";
   const attachmentPaths = getMaterializedAttachmentPaths(requestPayload);
+  const comments = getPromptComments(requestPayload);
+  const requestMode = typeof requestPayload.mode === "string" ? requestPayload.mode : "ideate";
 
   const activeVariant =
     typeof requestPayload.activeVariant === "string" ? requestPayload.activeVariant : null;
   const activeComponentRecord = requestPayload.activeComponent;
   const activeComponentName =
-    isRecord(activeComponentRecord) && typeof activeComponentRecord.name === "string"
-      ? activeComponentRecord.name
+    isRecord(activeComponentRecord) && typeof activeComponentRecord.displayName === "string"
+      ? activeComponentRecord.displayName
+      : isRecord(activeComponentRecord) && typeof activeComponentRecord.name === "string"
+        ? activeComponentRecord.name
       : "unknown";
   const existingVariantNames: string[] = Array.isArray(
     isRecord(activeComponentRecord) ? activeComponentRecord.variantNames : undefined,
@@ -187,6 +222,7 @@ Work through these steps before writing any file:
 ## SESSION CONTEXT
 Project root: ${normalizePath(projectRoot)}
 Session folder: ${sessionRelativePath}
+Mode: ${requestMode}
 Active component: ${activeComponentName}
 Active variant: ${activeVariantDisplay}${existingVariantNames.length > 0 ? `\nOther variants for this component: ${existingVariantNames.map((n) => `"${n}"`).join(", ")} — these are peers, not bases.` : ""}
 
@@ -194,6 +230,11 @@ The user is currently viewing the "${activeVariantDisplay}" variant of **${activ
 
 ## USER REQUEST
 ${prompt || "(no prompt provided)"}
+
+${comments.length > 0 ? `## COMMENTS
+${comments.map((comment, index) => `${index + 1}. ${comment.text}
+   Target: ${comment.sourceId}${comment.instanceId ? ` (${comment.instanceId})` : ""}
+   Anchor: ${comment.anchor || "not captured"}`).join("\n")}` : ""}
 
 ## CONTEXT FILE
 Read \`./${sessionRelativePath}/request.json\`. It contains page context, all mounted component hints, and the exact legal variant target directories. Treat it as ground truth for paths.${attachmentPaths.length > 0 ? `\n\n## SCREENSHOTS\n${attachmentPaths.map((p) => `- ${p}`).join("\n")}` : ""}`;

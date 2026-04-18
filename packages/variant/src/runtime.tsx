@@ -22,6 +22,9 @@ export {
   defaultShortcuts,
   getRepresentativeMountedInstance,
   type MountedVariantInstance,
+  type VariantComment,
+  type VariantCommentAnchor,
+  type VariantCommentViewportPoint,
   type VariantAgentAvailability,
   type VariantAgentLogEntry,
   type VariantAgentState,
@@ -31,6 +34,7 @@ export {
   type VariantCanvasMode,
   type VariantCanvasState,
   type VariantDockMode,
+  type VariantSketchAttachment,
   type VariantSurface,
   type VariantReviewResult,
   type RuntimeComponentRecord,
@@ -224,7 +228,13 @@ export function createVariantProxy<Props extends object>({
 
     return (
       <>
-        <span ref={boundaryRef} data-variiant-source-id={sourceId} style={{ display: "contents" }}>
+        <span
+          ref={boundaryRef}
+          data-variiant-source-id={sourceId}
+          data-variiant-instance-id={instanceId}
+          data-variiant-display-name={displayName}
+          style={{ display: "contents" }}
+        >
           <Component {...props} />
         </span>
         {canvasPreviewPortals}

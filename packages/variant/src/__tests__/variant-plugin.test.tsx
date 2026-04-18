@@ -330,6 +330,78 @@ describe("variant runtime proxy", () => {
     expect(document.body.textContent).toContain("Review Stack");
   });
 
+  it("renders contextual comments against the visible component instance", async () => {
+    const OrdersTable = createVariantProxy({
+      sourceId: "src/components/OrdersTable.tsx",
+      displayName: "Orders Table",
+      selected: "source",
+      variants: {
+        source: function OrdersTableSource() {
+          return <button data-testid="orders-comment-target">Approve order</button>;
+        },
+      },
+    });
+
+    render(<OrdersTable />);
+    installVariantOverlay();
+    const controller = getVariantRuntimeController();
+    await waitFor(() => {
+      expect(controller.getSnapshot().components).toHaveLength(1);
+      expect(controller.getSnapshot().components[0]?.mountedCount).toBe(1);
+    });
+    controller.actions.openOverlay();
+    controller.actions.setToolMode("comment");
+
+    const target = await screen.findByTestId("orders-comment-target");
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({
+      width: 180,
+      height: 44,
+      left: 120,
+      top: 80,
+      right: 300,
+      bottom: 124,
+      x: 120,
+      y: 80,
+      toJSON: () => ({}),
+    } as DOMRect);
+    controller.actions.upsertComment({
+      id: "comment-ui-1",
+      sourceId: "src/components/OrdersTable.tsx",
+      instanceId: document.querySelector("[data-variiant-instance-id]")?.getAttribute("data-variiant-instance-id") ?? null,
+      text: "Make the action label stronger.",
+      anchor: {
+        x: 120,
+        y: 80,
+        width: 180,
+        height: 44,
+      },
+      viewportPoint: {
+        x: 140,
+        y: 92,
+      },
+      visibilityKey: document.querySelector("[data-variiant-instance-id]")?.getAttribute("data-variiant-instance-id") ?? null,
+      createdAt: 1,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-variant-comment-input="comment-ui-1"]')).not.toBeNull();
+    });
+
+    const commentInput = document.querySelector('[data-variant-comment-input="comment-ui-1"]') as HTMLTextAreaElement | null;
+    expect(commentInput).not.toBeNull();
+    fireEvent.input(commentInput!, {
+      target: {
+        value: "Make the action label stronger.",
+      },
+    });
+
+    expect(getVariantRuntimeState().comments[0]).toMatchObject({
+      sourceId: "src/components/OrdersTable.tsx",
+      instanceId: expect.stringContaining("variant-instance-"),
+      text: "Make the action label stronger.",
+    });
+  });
+
   it("uses inferred parent width for wide component groups in components mode", async () => {
     const WidePanel = createVariantProxy({
       sourceId: "src/components/WidePanel.tsx",
@@ -1109,6 +1181,134 @@ describe("variant runtime proxy", () => {
       fileName: "metricscards.jpg",
       dataUrl: "data:image/jpeg;base64,b2tsY2g=",
     });
+  });
+
+  it("sends contextual comments and sketch attachments in the ideate request payload", async () => {
+    let runPayload: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/__variiant/config")) {
+        return new Response(JSON.stringify({
+          token: "test-token",
+          agent: {
+            enabled: true,
+            commandLabel: "codex exec --json",
+            message: null,
+            streaming: "text",
+            supportsImages: true,
+          },
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+
+      runPayload = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      return new Response(`${JSON.stringify({
+        type: "done",
+        sessionId: "session-comments-1",
+        exitCode: 0,
+        changedFiles: [],
+      })}\n`, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/x-ndjson",
+        },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const OrdersTable = createVariantProxy({
+      sourceId: "src/components/OrdersTable.tsx",
+      displayName: "Orders Table",
+      selected: "source",
+      variants: {
+        source: function OrdersTableSource() {
+          return <button>Approve order</button>;
+        },
+      },
+    });
+
+    render(<OrdersTable />);
+    installVariantOverlay();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ".",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    await screen.findAllByText(/Agent: codex exec --json/i);
+
+    const controller = getVariantRuntimeController();
+    controller.actions.upsertComment({
+      id: "comment-a",
+      sourceId: "src/components/OrdersTable.tsx",
+      instanceId: "variant-instance-1",
+      text: "Tighten the CTA copy.",
+      anchor: {
+        x: 120,
+        y: 80,
+        width: 180,
+        height: 44,
+      },
+      viewportPoint: {
+        x: 140,
+        y: 92,
+      },
+      visibilityKey: "variant-instance-1",
+      createdAt: 1,
+    });
+    controller.actions.setSketchAttachment({
+      status: "ready",
+      fileName: "sketch.png",
+      dataUrl: "data:image/png;base64,c2tldGNo",
+      width: 1440,
+      height: 900,
+    });
+
+    const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
+    expect(prompt).not.toBeNull();
+    fireEvent.input(prompt!, {
+      target: {
+        value: "Make this feel more urgent.",
+      },
+    });
+
+    const runButton = document.querySelector('[data-variant-agent-run="true"]') as HTMLButtonElement | null;
+    expect(runButton).not.toBeNull();
+    fireEvent.click(runButton!);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(runPayload).not.toBeNull();
+    });
+
+    expect(runPayload).toMatchObject({
+      mode: "ideate",
+      prompt: "Make this feel more urgent.",
+    });
+    expect(runPayload?.comments).toEqual([
+      expect.objectContaining({
+        id: "comment-a",
+        sourceId: "src/components/OrdersTable.tsx",
+        text: "Tighten the CTA copy.",
+      }),
+    ]);
+    expect(runPayload?.attachments).toEqual([
+      expect.objectContaining({
+        kind: "sketch",
+        fileName: "sketch.png",
+        mimeType: "image/png",
+        dataUrl: "data:image/png;base64,c2tldGNo",
+      }),
+    ]);
   });
 
   it("captures the full descendant bounds for a multi-node display-contents boundary", async () => {
@@ -2115,6 +2315,138 @@ describe("variant plugin", () => {
 
     expect(requestPayload.attachments?.[0]?.path).toMatch(/orders-table\.png$/);
     expect(requestPayload.attachments?.[0]?.dataUrl).toBeUndefined();
+  });
+
+  it("writes comments and sketch attachments into the materialized session payload and prompt", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-agent-context-"));
+    const agentScriptPath = path.join(tempRoot, "agent-context.js");
+    fs.writeFileSync(
+      agentScriptPath,
+      [
+        "let input='';",
+        "process.stdin.on('data',chunk=>input+=chunk);",
+        "process.stdin.on('end',()=>{",
+        "process.stdout.write(input);",
+        "});",
+      ].join(""),
+    );
+    fs.writeFileSync(
+      path.join(tempRoot, "variiant.config.json"),
+      JSON.stringify({
+        agent: {
+          command: ["node", agentScriptPath],
+          streaming: "text",
+        },
+      }, null, 2),
+    );
+
+    let middleware:
+      | ((req: unknown, res: unknown, next: () => void) => void)
+      | undefined;
+
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+    plugin.configureServer?.({
+      watcher: {
+        add: vi.fn(),
+        on: vi.fn(),
+      },
+      ws: {
+        send: vi.fn(),
+      },
+      middlewares: {
+        use(handler: (req: unknown, res: unknown, next: () => void) => void) {
+          middleware = handler;
+        },
+      },
+    } as never);
+
+    expect(middleware).toBeDefined();
+
+    const configResponse = await invokeMiddleware(middleware!, {
+      method: "GET",
+      url: "/__variiant/config",
+    });
+    const configPayload = JSON.parse(configResponse.body) as { token: string };
+
+    const runResponse = await invokeMiddleware(middleware!, {
+      method: "POST",
+      url: "/__variiant/agent/run",
+      headers: {
+        "x-variiant-token": configPayload.token,
+      },
+      body: JSON.stringify({
+        mode: "ideate",
+        prompt: "Use the added context.",
+        comments: [
+          {
+            id: "comment-1",
+            sourceId: "src/components/OrdersTable.tsx",
+            instanceId: "variant-instance-1",
+            text: "Tighten the CTA copy.",
+            anchor: {
+              x: 120,
+              y: 80,
+              width: 180,
+              height: 44,
+            },
+            viewportPoint: {
+              x: 140,
+              y: 92,
+            },
+            visibilityKey: "variant-instance-1",
+          },
+        ],
+        attachments: [
+          {
+            kind: "sketch",
+            sourceId: "src/components/OrdersTable.tsx",
+            displayName: "Sketch Overlay",
+            variantName: null,
+            mimeType: "image/png",
+            fileName: "sketch.png",
+            width: 1440,
+            height: 900,
+            scale: 1,
+            dataUrl: "data:image/png;base64,c2tldGNo",
+          },
+        ],
+      }),
+    });
+
+    expect(runResponse.statusCode).toBe(200);
+    expect(runResponse.body).toContain("## COMMENTS");
+    expect(runResponse.body).toContain("Tighten the CTA copy.");
+    expect(runResponse.body).toContain("## SCREENSHOTS");
+
+    const sessionDirs = fs.readdirSync(path.join(tempRoot, ".variiant", "sessions"));
+    expect(sessionDirs).toHaveLength(1);
+    const sessionDir = path.join(tempRoot, ".variiant", "sessions", sessionDirs[0]!);
+    const requestPayload = JSON.parse(
+      fs.readFileSync(path.join(sessionDir, "request.json"), "utf8"),
+    ) as {
+      comments?: Array<{ text?: string }>;
+      attachments?: Array<{ kind?: string; path?: string; dataUrl?: string }>;
+    };
+    const promptText = fs.readFileSync(path.join(sessionDir, "prompt.md"), "utf8");
+
+    expect(requestPayload.comments).toEqual([
+      expect.objectContaining({
+        text: "Tighten the CTA copy.",
+      }),
+    ]);
+    expect(requestPayload.attachments?.[0]).toEqual(
+      expect.objectContaining({
+        kind: "sketch",
+        path: expect.stringMatching(/sketch\.png$/),
+      }),
+    );
+    expect(requestPayload.attachments?.[0]?.dataUrl).toBeUndefined();
+    expect(promptText).toContain("## COMMENTS");
+    expect(promptText).toContain("Tighten the CTA copy.");
+    expect(promptText).toContain("## SCREENSHOTS");
   });
 
   it("writes a per-session agent event log file when agent.logFile is enabled", async () => {

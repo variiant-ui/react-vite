@@ -151,6 +151,58 @@ describe("variant runtime controller", () => {
     expect(controller.getSnapshot().toolMode).toBe("none");
   });
 
+  it("stores contextual comments and sketch attachments as ideation context", () => {
+    const controller = createVariantRuntimeController();
+
+    controller.actions.upsertComment({
+      id: "comment-1",
+      sourceId: "src/components/OrdersTable.tsx",
+      instanceId: "variant-instance-1",
+      text: "Make this row density tighter.",
+      anchor: {
+        x: 24,
+        y: 80,
+        width: 280,
+        height: 48,
+      },
+      viewportPoint: {
+        x: 48,
+        y: 92,
+      },
+      visibilityKey: "variant-instance-1",
+      createdAt: 1,
+    });
+    controller.actions.updateComment("comment-1", "Make this row density much tighter.");
+    controller.actions.setSketchAttachment({
+      status: "ready",
+      fileName: "sketch.png",
+      dataUrl: "data:image/png;base64,c2tldGNo",
+      width: 1440,
+      height: 900,
+    });
+
+    expect(controller.getSnapshot().comments).toEqual([
+      expect.objectContaining({
+        id: "comment-1",
+        text: "Make this row density much tighter.",
+        sourceId: "src/components/OrdersTable.tsx",
+      }),
+    ]);
+    expect(controller.getSnapshot().sketch).toEqual({
+      status: "ready",
+      fileName: "sketch.png",
+      dataUrl: "data:image/png;base64,c2tldGNo",
+      width: 1440,
+      height: 900,
+    });
+
+    controller.actions.clearComments();
+    controller.actions.clearSketchAttachment();
+
+    expect(controller.getSnapshot().comments).toEqual([]);
+    expect(controller.getSnapshot().sketch.status).toBe("empty");
+  });
+
   it("keeps temporary selections separate from persisted live selections", () => {
     const persistedSelections: Record<string, string>[] = [];
     const controller = createVariantRuntimeController({
