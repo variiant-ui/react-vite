@@ -1,49 +1,49 @@
 # variiant-ui/react-vite
 
-When you use AI to iterate on a component, every new version overwrites the last one. You can't go back, you can't compare, and you can't show a stakeholder three real alternatives at once — only the most recent survives. `@variiant-ui/react-vite` fixes that.
+When you use AI to iterate on a component, every new version tends to overwrite the last one. You lose comparison, you lose reviewability, and you end up with one surviving answer instead of a real exploration trail. `@variiant-ui/react-vite` fixes that.
 
-It lets you accumulate multiple implementations of the same component and switch between them live inside your running app, on top of real data and real state. No screenshots. No isolated storybooks. Your main code never changes, and only your chosen version ships to production.
+It lets you accumulate multiple implementations of the same component and switch between them live inside your running app, on top of real data and real state. Your source imports stay unchanged, your exploratory files stay outside the main source tree, and production still ships only the chosen implementation.
 
-## Features
+## What it does today
 
-### Floating bar
+The package currently gives you:
 
-![Floating bar](docs/floating-bar.png)
+- live runtime switching between source and variant implementations
+- a transient in-browser runtime surface for prompting and selection
+- a fullscreen comparison canvas
+- a local agent bridge that creates or edits variant files under `.variiant/variants/`
 
-Press `Cmd/Ctrl + Shift + .` to open a compact floating bar at the bottom of any page. It shows every variant-enabled component currently on screen and lets you cycle through their alternatives instantly. The app keeps running — routing, providers, data loading — nothing resets. Close the bar when you're done; it stays out of the way the rest of the time.
+## Product direction
 
-### Ask Agent
+The product direction is moving toward three clearer workflows:
 
-The floating bar has a built-in prompt field. Type a direction — "make this table more compact" or "try a card grid layout" — and the agent creates a new variant file without touching your existing component. When the file lands, Vite swaps it in and you see it immediately. You can keep prompting, keep stacking variants, and only decide what to keep when you're ready.
+- `Ideate`: prompt on the live page with richer context
+- `Review`: understand and compare generated results more clearly
+- `Tweak`: make bounded follow-up edits without another full prompt
 
-### Canvas
-
-Press `Cmd/Ctrl + Shift + ,` to open the fullscreen comparison canvas. It shows every variant of every component you've created, grouped side-by-side with labels. Two modes:
-
-- **Components** — isolates each component family so you can compare implementations without page noise
-- **Pages** — clones the current page once per variant so you can see every design direction in full context at once
+That direction does not change the integration story. It changes how the runtime feels in the browser.
 
 ## How it works
 
-variiant-ui works by intercepting component imports at the Vite level and transparently replacing them with a thin proxy. The proxy knows about all the variant implementations you've created and switches between them at runtime.
+variiant-ui intercepts component imports at the Vite level and replaces them with a thin proxy when a matching variant directory exists.
 
-Your source components are never modified. The variants live in a separate `.variiant/variants/` folder that mirrors the shape of your source tree but sits entirely outside your main code path. If you delete the entire folder, your app is identical to what it was before you installed the package.
+Your source components are never modified. Variants live in a separate `.variiant/variants/` folder that mirrors your source tree but sits outside your main code path. If you delete the entire folder, your app is identical to what it was before you installed the package.
 
-Production builds are not affected. The Vite plugin resolves exactly one implementation per component — the one you've selected, or the original source if you haven't picked one — and the rest never make it into the bundle.
+Production builds are still pruned to one implementation per boundary: the selected variant, or the original source when no variant is selected.
 
 ```text
 your-app/
   src/
     components/
-      OrdersTable.tsx        ← your code, untouched
+      OrdersTable.tsx
   .variiant/
     variants/
       src/
         components/
           OrdersTable.tsx/
             default/
-              compact.tsx    ← variant A
-              cta.tsx        ← variant B
+              compact.tsx
+              cta.tsx
 ```
 
 Your import stays exactly as it was:
@@ -51,8 +51,6 @@ Your import stays exactly as it was:
 ```tsx
 import OrdersTable from "@/components/OrdersTable";
 ```
-
-In development, that import resolves through the proxy and shows whichever variant is active. In production, it resolves directly to the source (or your chosen variant) with no proxy overhead and no dead code.
 
 ## Install
 
@@ -63,7 +61,7 @@ npm install @variiant-ui/react-vite
 npm exec variiant init
 ```
 
-`variiant init` detects any local AI CLI you have installed (Codex, Claude, or Copilot) and sets up the agent bridge for you. It also creates `.variiant/.gitignore` so session files stay out of your repo.
+`variiant init` detects supported local agent CLIs and writes `variiant.config.json`. It also creates `.variiant/.gitignore` so session files stay out of your repo.
 
 ## Vite setup
 
@@ -79,18 +77,18 @@ export default defineConfig({
 });
 ```
 
-That's it. The floating bar and all keyboard shortcuts are active the next time you start your dev server. You don't need any variants yet — the bar opens even with an empty `.variiant/` folder and fills in as you create alternatives.
+That is the whole app integration surface.
 
 ## Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
-| `Cmd/Ctrl + Shift + .` | Open / close the floating bar |
-| `Cmd/Ctrl + Shift + ,` | Open / close the canvas |
-| `Cmd/Ctrl + Alt + ↑ / ↓` | Move focus between components |
+| `Cmd/Ctrl + Shift + .` | Open / close the runtime surface |
+| `Cmd/Ctrl + Shift + ,` | Open / close the comparison canvas |
+| `Cmd/Ctrl + Alt + ↑ / ↓` | Move focus between mounted components |
 | `Cmd/Ctrl + Shift + ← / →` | Cycle through variants |
 
-All shortcuts work whether the bar or canvas is open or closed.
+All shortcuts work whether the runtime surface is open or closed.
 
 ## Variant file convention
 
@@ -103,7 +101,7 @@ Variant files live under `.variiant/variants/` and mirror your source tree. A fo
       components/
         OrdersTable.tsx/
           default/
-            compact.tsx      ← replaces the default export
+            compact.tsx
             cta.tsx
       features/
         dashboard/
@@ -114,8 +112,8 @@ Variant files live under `.variiant/variants/` and mirror your source tree. A fo
 
 - `default/<name>.tsx` targets the default export
 - `<NamedExport>/<name>.tsx` targets a named export
-- each variant file must use `export default`; other files in the folder are treated as helpers and ignored by the registry
-- relative imports inside a variant resolve against the original source directory, so you can copy source-relative imports without changes
+- each variant file must use `export default`
+- helper files without `export default` are allowed, but they are not runtime variants
 
 ## Agent bridge configuration
 
@@ -135,8 +133,17 @@ Variant files live under `.variiant/variants/` and mirror your source tree. A fo
 }
 ```
 
-When this file is present, the floating bar's Ask Agent prompt sends to that CLI. While the agent is running, the prompt area becomes a progress strip showing the latest output. When the agent writes a variant file, Vite hot-reloads the affected proxy module and you see the result immediately without a full page refresh.
+When this file is present, the runtime can send structured local sessions to that CLI. Session files are stored under `.variiant/sessions/<session-id>/` and currently include the request payload plus any materialized image attachments.
 
-Set `"refresh": "full-reload"` if your app needs the older full-page behavior, or configure it per-plugin in `vite.config.ts` with `variantPlugin({ agentRefresh: "full-reload" })`.
+This session model is also the basis for the next runtime direction:
 
-If `agent.image.cliFlag` is set, the floating bar shows an `Attach screenshot` checkbox. Checking it captures the active component at 1x resolution and passes the saved file to the agent CLI alongside your prompt.
+- contextual comments
+- sketch attachments
+- clearer review metadata
+- deterministic tweak operations
+
+## Direction notes
+
+The current comparison canvas still exists, but the target direction is component-focused review. Duplicated page-mode comparison is no longer the planned long-term model.
+
+Likewise, the next planned refinement path is not "more prompt text." It is richer structured context for ideation and deterministic tweaks for cheap follow-up edits such as copy changes.

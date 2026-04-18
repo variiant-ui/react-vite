@@ -2,16 +2,17 @@
 
 ## Product story
 
-`@variiant-ui/react-vite` should feel invisible to product engineers until they want it.
+`@variiant-ui/react-vite` should feel almost invisible until a team wants to explore UI alternatives.
 
-The adoption bar is:
+The adoption bar remains:
 
-- no source-level wrapper around every variantable component
-- no runtime provider mounted in app code
-- no exploratory files mixed into the production component tree
-- clear production behavior
+- unchanged component imports
+- no source-level wrappers around app components
+- no provider mounted in app code
+- exploratory files outside the production component tree
+- deterministic production selection
 
-The implementation in this repo is designed around that bar.
+The runtime direction is evolving, but that adoption bar does not change.
 
 ## Public API
 
@@ -20,13 +21,32 @@ Current public API:
 - `variantPlugin()` for Vite
 - `.variiant/variants/` as the canonical variant workspace
 - optional top-level `variiant.config.json` for the local agent bridge
-- optional `agent.refresh` config or `variantPlugin({ agentRefresh })` override for post-agent reload behavior
+- optional `agent.refresh` config or `variantPlugin({ agentRefresh })` override
 - mirrored source-path folders for default and named export targets
 - only default-exporting files inside those target folders are treated as runtime variants
 - fallback resolution of unresolved variant-relative imports against the original source module directory
 - one installable package for the whole browser workflow
 
-That is the whole integration surface.
+That remains the whole integration surface.
+
+## Current runtime surface
+
+Today the package ships:
+
+- a transient in-browser overlay for prompt entry and runtime switching
+- keyboard shortcuts for overlay/canvas toggling and variant navigation
+- a fullscreen comparison canvas
+- local agent bridge support for creating and editing variant files
+
+## Target runtime direction
+
+The product direction is moving toward three explicit workflows:
+
+- `Ideate`: prompt + contextual comments + sketch attachment + component targeting
+- `Review`: clearer result presentation on the live page and in a focused component comparison surface
+- `Tweak`: deterministic post-generation edits such as copy changes and later bounded Tailwind/token adjustments
+
+This direction does not change the package installation or import model. It changes the browser workflow layered on top of the same runtime and plugin architecture.
 
 ## Integration
 
@@ -39,11 +59,9 @@ npm install @variiant-ui/react-vite
 npm exec variiant init
 ```
 
-`npm exec variiant init` is the default post-install command because it uses the app-local package binary without requiring a custom npm script. If it detects local `codex`, `claude`, or `copilot` CLIs, it prompts the user to choose which one to configure and writes the matching default command. Codex gets the `--image` screenshot flag automatically. If a team wants a script wrapper, they can add `"variiant": "variiant"` to `package.json` and run `npm run variiant -- init`. Avoid `npx variiant init` for local proving or local file installs because it can fall through to the registry instead of the local dependency.
+`npm exec variiant init` uses the app-local package binary and writes `variiant.config.json`. It also creates `.variiant/.gitignore` so session files stay out of the repo.
 
 ### 2. Add the Vite plugin
-
-Edit the consuming app's `vite.config.ts`:
 
 ```ts
 import { defineConfig } from "vite";
@@ -55,15 +73,15 @@ export default defineConfig({
 });
 ```
 
-### 3. Keep app imports unchanged
+### 3. Keep imports unchanged
 
 ```tsx
 import OrdersTable from "@/components/OrdersTable";
 ```
 
-Variant does not require app code to import a generated proxy or mount a provider.
+Variant still does not require app code to import a generated proxy or mount a provider.
 
-### 4. Add a top-level variant entry
+### 4. Add variant files under `.variiant/variants/`
 
 ```text
 .variiant/
@@ -81,8 +99,6 @@ The source component remains the implicit default variant named `source`.
 
 ### 5. Optional: enable the local agent bridge
 
-Create `variiant.config.json` in the app root:
-
 ```json
 {
   "agent": {
@@ -97,49 +113,48 @@ Create `variiant.config.json` in the app root:
 }
 ```
 
-The recommended bootstrap path is `npm exec variiant init`, which writes the nested config shape above and creates `.variiant/.gitignore` with `sessions/` ignored. Run it from the consuming app root after install. For compatibility, the loader also accepts flat keys such as `"agent.command"`, but the documented convention is the nested `agent` object only. Claude and Copilot presets write their own non-interactive command defaults; only Codex currently adds an explicit `agent.image.cliFlag`. The Claude preset also enables `stream-json`, `--verbose`, and `--include-partial-messages` so the overlay can show incremental text updates instead of waiting for final output only.
+The current bridge sends one structured request per session and stores it under `.variiant/sessions/<session-id>/`.
 
-That enables prompt submission from the floating bar to a local CLI running inside the project root. While a run is active, the prompt area becomes a compact latest-message progress strip instead of a raw terminal log. `agent.refresh` defaults to `"hmr"`, which lets agent-created variant changes become swappable immediately by reloading only the affected variiant proxy modules. Set `"refresh": "full-reload"` to restore page refresh behavior, or force it from the Vite side with `variantPlugin({ agentRefresh: "full-reload" })` when app teams prefer not to commit that choice into `variiant.config.json`.
+That session model is important because it is also the natural seam for future:
 
-If `agent.image.cliFlag` is configured, Ask Agent also exposes an `Attach <component name> screenshot` checkbox that captures the active component at 1x, stores it in the request session, and passes the saved file to the CLI with that flag. If `agent.logFile` is `true`, the full emitted agent event stream is also written to `.variiant/sessions/<session-id>/agent-events.ndjson` for later inspection. The bridge is development-only and rejects agent working directories that escape the app root.
+- comment attachments
+- sketch attachments
+- review metadata
+- deterministic tweak operations
 
 ## How it works
 
 In development:
 
-- the plugin bootstraps the browser overlay and keybindings even before any variant folders exist
+- the plugin bootstraps the browser runtime and keybindings
 - the plugin scans `.variiant/variants/`
-- when the app imports a component that has a matching mirrored variant folder, the plugin rewrites that import to a virtual proxy module
-- the proxy exports the source component plus all discovered exploratory variants
-- the browser runtime exposes those variants in the overlay, fullscreen comparison canvas, and keybindings
+- imports for variant-enabled source files are rewritten to virtual proxy modules
+- the proxy exposes the source component plus discovered exploratory variants
+- the runtime selects between them on the live page
 
 In production:
 
-- the plugin still rewrites the import
-- but it rewrites it to only one production implementation for that component boundary
-- non-selected exploratory files are not imported into the production module graph
+- imports are still rewritten
+- but they resolve to only one production implementation per component boundary
+- non-selected exploratory files are excluded from the production graph
 
-That keeps the app import stable while moving all Variant behavior into the toolchain.
+That keeps the app import stable while moving Variant behavior into the toolchain.
 
 ## Compatibility model
 
-Variant compatibility is boundary-based, not strict-type-based.
+Compatibility remains boundary-based, not strict-type-based.
 
 The important rule is:
 
-- every variant must be renderable from the same component import boundary
+- every variant must be safe to render from the same component import boundary
 
-The unimportant rule is:
-
-- every variant does not need to use the same data or props internally
-
-So this is allowed:
+This is still allowed:
 
 - source component consumes `items`
 - variant ignores `items`
 - variant renders a static CTA instead
 
-As long as the variant can safely tolerate the parent’s props, the swap is valid.
+As long as the import boundary remains safe, the swap is valid.
 
 ## Production safety contract
 
@@ -150,34 +165,68 @@ Variant must guarantee all of the following:
 - development can expose multiple variants for a component
 - production imports only the selected implementation
 - non-selected variants are excluded from the production import graph
-- the runtime overlay is development-only
+- runtime-only surfaces remain development-only
 
-This contract is the reason the architecture uses bundler rewriting instead of source-level wrappers as the primary model.
+This contract is why the architecture stays bundler-first rather than source-wrapper-first.
 
-## Why this is adoptable
+## Workflow direction
 
-The default flow matches how teams already think:
+The runtime direction now assumes three layers of interaction:
 
-- component stays where it already lives
-- designers or exploratory builders can work in `.variiant/variants/`
-- the bundler handles the magic
-- engineers do not have to thread a new abstraction through the app
+### Ideate
 
-That is a much better day-1 value prop than asking teams to change production component code just to enable design exploration.
+The user provides intent plus context. Over time this should include:
+
+- component targeting
+- contextual comments
+- sketch attachments
+- screenshots and page metadata
+
+### Review
+
+The user inspects what changed and compares alternatives. Over time this should emphasize:
+
+- live-page preview of generated variants
+- component-focused comparison surfaces
+- explicit result summaries after a run
+
+### Tweak
+
+The user makes cheap follow-up edits without another full prompt. Planned deterministic scopes are:
+
+- copy changes first
+- static Tailwind utility adjustments later
+- token/style variable adjustments after that
 
 ## Current scope
 
 This repo currently implements:
 
 - Vite plugin integration
-- development overlay and keybindings
-- fullscreen comparison canvas with `Components` and `Pages` modes
+- development runtime overlay and keybindings
+- fullscreen comparison canvas
 - production-safe selected-variant builds
 - `.variiant/variants` conventions, with fallback to legacy `.variants`
-- a single package that contains the Vite plugin, browser overlay, and React runtime adapter
+- a single package containing the Vite plugin, browser runtime, and React adapter
+- local agent sessions backed by structured request files
 
-Future adapters like Next.js should preserve the same mental model:
+## Planned direction
 
-- unchanged imports
-- `.variiant/variants`
-- build-time import rewriting
+The next architectural direction is:
+
+- transient bottom-centered dock instead of a generic floating utility surface
+- explicit ideation tool modes
+- removal of page-mode comparison as the target direction
+- richer structured request payloads
+- deterministic tweak tooling beside the agent workflow
+
+## Why this is adoptable
+
+The package still matches how teams already think:
+
+- the component stays where it already lives
+- exploratory work stays in `.variiant/variants/`
+- the bundler handles the swap boundary
+- the runtime browser workflow adds context and review, not source churn
+
+That keeps the product easy to adopt even as the browser workflow becomes more ambitious.

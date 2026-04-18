@@ -2,12 +2,13 @@
 
 ## Purpose
 
-Prove the current architecture in a real web app we own, outside this package repo:
+Prove the updated product direction in a real consumer app outside this repo, currently `~/personal/shadcn-admin`.
 
-- imports stay normal
-- exploratory variants live under `.variiant/variants/`
-- development can swap them live
-- production only ships the selected implementation
+The proof now needs to validate more than variant swapping. It needs to validate the new browser workflow:
+
+- ideation on the live page
+- legible review of generated results
+- bounded deterministic tweaks
 
 The proof is successful only if the integration feels elegant to a normal React team, not merely technically possible.
 
@@ -16,36 +17,45 @@ The proof is successful only if the integration feels elegant to a normal React 
 We need evidence for these claims:
 
 - a React app can enable Variant without editing component callsites
-- exploratory files can live fully outside the production component tree
-- imports of real source components are still enough to make them swappable
-- runtime keybindings can switch mounted components and their variants
-- production excludes non-selected variants
+- exploratory files can live fully under `.variiant/variants/`
+- the live page is enough for page-context exploration
+- the transient dock is a better entrypoint than a generic floating utility surface
+- contextual comments improve prompt quality without making the runtime noisy
+- sketch mode feels intentional and not broken
+- generated variants are easier to review after a run
+- small copy edits can happen without another full prompt
+- production still excludes non-selected variants
 
 ## Host app selection
 
-Choose a real app with:
+Use a real app with:
 
 - React and TypeScript
-- Vite if possible for the first proof
+- Vite
 - a visually meaningful route
-- a component whose import path is stable
+- at least one component family worth iterating on
 
-Good targets:
+Good proving targets:
 
 - dashboard overview
-- analytics rail
-- detail hero
-- report summary
+- analytics panel
+- settings surface
+- data table or card grid
 
-Avoid tiny primitives for the first proof. The point is to prove a real component swap.
-
-Keep the proving app in a separate checkout and install `@variiant-ui/react-vite` from this repo via an npm local file dependency with `npm install --install-links`. That gives the host app a normal installed package shape instead of a symlink while still consuming your local checkout.
+Avoid tiny primitives for the first proof. The product needs to prove a meaningful exploration workflow.
 
 ## Proof setup
 
-### 1. Add the plugin
+### 1. Install the package locally
 
-In `vite.config.ts`:
+In the host app:
+
+```bash
+npm install --install-links /Users/darko/personal/variant/packages/variant
+npm exec variiant init
+```
+
+### 2. Add the plugin
 
 ```ts
 import { defineConfig } from "vite";
@@ -57,21 +67,13 @@ export default defineConfig({
 });
 ```
 
-The dev plugin should make `Cmd/Ctrl + Shift + .` open the floating bar immediately, even before `.variiant/variants/` exists.
-
-### 2. Keep imports unchanged
-
-The host app should continue importing components normally:
+### 3. Keep imports unchanged
 
 ```tsx
 import DashboardOverview from "@/dashboard/DashboardOverview";
 ```
 
-Do not rewrite the app to import generated proxies or wrapper components.
-
-### 3. Add top-level variant folders
-
-Example:
+### 4. Add top-level variant folders
 
 ```text
 .variiant/
@@ -85,57 +87,137 @@ Example:
             editorial.tsx
 ```
 
+## Proving stages
+
+### Stage 1: Runtime baseline
+
+Validate:
+
+- the runtime bootstraps with unchanged imports
+- mounted component tracking works
+- variant switching still works on a real page
+- production excludes non-selected variants
+
+### Stage 2: Dock and review flow
+
+Validate:
+
+- the transient dock opens and closes reliably
+- the dock is understandable as an ideation and review entrypoint
+- generated-result summaries are legible after a run
+- component-focused review is enough without a duplicated page gallery
+
+### Stage 3: Comment mode
+
+Validate:
+
+- hover targeting feels precise
+- comment placement is obvious
+- comments hide when their target is not visible
+- comment context improves the resulting agent output
+
+### Stage 4: Sketch mode
+
+Validate:
+
+- entering sketch mode clearly changes interaction
+- drawing is smooth
+- submit/discard flows are obvious
+- sketch attachments are useful to the local agent
+
+### Stage 5: Deterministic tweaks
+
+Validate:
+
+- copy tweaks are faster than issuing a new prompt
+- tweak affordances are understandable
+- rewrites only affect variant files
+- Tailwind tweak support, when added, remains reliable on static utility strings
+
 ## Manual validation
 
-Use this script:
+### Baseline
 
 1. Start the app in development mode.
-2. Open the route that mounts the source component.
+2. Open a route that mounts the target component.
 3. Confirm the source implementation renders with unchanged imports.
-4. Press `Cmd/Ctrl + Shift + .` to open the overlay, even if no `.variiant/variants/` folder exists yet.
-5. Confirm the floating bar appears.
-6. After adding variant files, confirm the mounted component appears in the overlay.
-7. Switch to each exploratory variant.
-8. Press `Cmd/Ctrl + Shift + ,` to open the fullscreen canvas.
-9. Confirm `Components` mode shows only the mounted component families on the current page, with source-file labels in the top-left of each group.
-10. Switch to `Pages` mode and confirm the active component family renders as duplicated full-page DOM previews, one preview per variant.
-11. Confirm the page still functions.
-12. Use `Cmd/Ctrl + Alt + ArrowUp/ArrowDown` to switch the active mounted component.
-13. Use `Cmd/Ctrl + Shift + ArrowLeft/ArrowRight` to switch the active variant.
-14. Refresh and confirm the local runtime selection persists if expected.
+4. Add one or more variant files under `.variiant/variants/`.
+5. Confirm the runtime detects and swaps those variants.
+6. Verify keyboard navigation between mounted components and variants.
 
-Then verify production:
+### Ideate
+
+1. Open the dock.
+2. Enter a prompt for the active component.
+3. Submit a run and confirm the session is created under `.variiant/sessions/`.
+4. Confirm generated files land under the correct mirrored variant directory.
+
+### Comments
+
+1. Enter comment mode.
+2. Hover a visible target and confirm its boundary highlight.
+3. Place a comment on a target inside a tab or conditional view.
+4. Change the UI state so the target disappears.
+5. Confirm the comment is hidden rather than rendered in the wrong place.
+
+### Sketch
+
+1. Enter sketch mode.
+2. Confirm normal page interaction is disabled while drawing.
+3. Draw, then discard once.
+4. Draw again and submit.
+5. Confirm the sketch is attached to the request session.
+
+### Review
+
+1. Run a prompt that creates multiple variants.
+2. Confirm the runtime reports which component family changed.
+3. Preview the generated variants on the live page.
+4. Open the component-focused comparison surface.
+5. Confirm the result is legible without relying on a full-page clone mode.
+
+### Tweaks
+
+1. Select an existing variant.
+2. Use the tweak UI to change literal copy.
+3. Confirm the rewrite affects only the variant file.
+4. Refresh and confirm the result remains selectable and mounted.
+5. When Tailwind tweaks exist, validate a static utility replacement such as `px-4` to `px-2`.
+
+### Production
 
 1. Run a production build.
-2. Inspect the built output.
-3. Confirm exploratory variant strings or modules are absent from the production bundle.
+2. Inspect the output bundle.
+3. Confirm exploratory non-selected variants are absent.
 
 ## Pass criteria
 
 The proof passes if:
 
-- the host app import paths remain untouched
-- exploratory files live fully in `.variiant/variants/`
-- runtime swapping works on a real mounted component
-- current-page canvas comparison works in both `Components` and `Pages` modes
-- keyboard navigation works
-- non-selected variants are absent from the production bundle
-- the integration diff feels small enough that another team would accept it
+- import paths remain untouched
+- exploratory files stay fully under `.variiant/variants/`
+- the dock improves ideation and review clarity
+- contextual comments are helpful and not noisy
+- sketch mode feels intentional
+- generated results are easier to understand than they were with the old runtime
+- copy tweaks work without another full prompt
+- non-selected variants remain absent from the production bundle
 
 ## Failure criteria
 
 The proof fails if:
 
-- engineers have to wrap core components in source just to opt in
-- exploratory files creep into the production component tree
-- production build includes non-selected variants
-- runtime swapping feels brittle on a normal page
+- teams must wrap source components to opt in
+- the runtime still depends on duplicated page-mode comparison to explain results
+- comments feel detached from the UI they describe
+- sketch mode fights normal page interaction
+- deterministic tweaks are too brittle to trust
+- production output includes exploratory non-selected variants
 
-## What to learn
+## Questions to answer after proofing
 
-At the end of the proof, answer these:
-
-1. Is `.variiant/variants/` easier for teams to accept than colocated source wrappers?
-2. Does import rewriting feel invisible enough to be a strong day-1 value prop?
-3. Is the compatibility model permissive enough for exploratory design work?
-4. What is still needed before a Next.js adapter is credible?
+1. Does the dock make the product easier to understand than the old floating-bar mental model?
+2. Is the live page enough as the only page-context surface?
+3. Do comments and sketches materially reduce prompt length and ambiguity?
+4. Is copy-tweak support valuable enough to justify the deterministic rewrite path?
+5. Which Tailwind utility groups are safe enough to support next?
