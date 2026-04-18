@@ -1,14 +1,20 @@
 import { toCanvas } from "html-to-image";
 import type {
   Shortcut,
-  VariantComment,
-  VariantCommentAnchor,
-  VariantCommentViewportPoint,
   VariantRuntimeController,
   VariantRuntimeSnapshot,
-  VariantSketchAttachment,
 } from "./runtime-core";
 import { getRepresentativeMountedInstance } from "./runtime-core";
+import {
+  clearVariantToolSketch,
+  renderVariantToolLayer,
+} from "./runtime-dom-tools";
+import {
+  escapeAttributeValue,
+  escapeHtml,
+  formatCanvasGroupLabel,
+  getRenderableComponentRect,
+} from "./runtime-dom-shared";
 
 const installedKeyboardControllers = new WeakSet<VariantRuntimeController>();
 const installedOverlayControllers = new WeakSet<VariantRuntimeController>();
@@ -24,7 +30,6 @@ const agentBridgeStates = new WeakMap<VariantRuntimeController, {
   token: string | null;
 }>();
 const canvasDomStates = new WeakMap<VariantRuntimeController, VariantCanvasDomState>();
-const toolDomStates = new WeakMap<VariantRuntimeController, VariantToolDomState>();
 
 type VariantAgentRequestAttachment = {
   kind: "component-screenshot" | "sketch";
@@ -68,32 +73,6 @@ type VariantCanvasDomState = {
     lastX: number;
     lastY: number;
   };
-};
-
-type VariantHoverTarget = {
-  sourceId: string;
-  instanceId: string | null;
-  displayName: string;
-  anchor: VariantCommentAnchor;
-  viewportPoint: VariantCommentViewportPoint;
-  visibilityKey: string | null;
-};
-
-type VariantToolDomState = {
-  root: HTMLDivElement;
-  interactionLayer: HTMLDivElement;
-  highlightBox: HTMLDivElement;
-  commentsLayer: HTMLDivElement;
-  sketchCanvas: HTMLCanvasElement;
-  hoveredTarget: VariantHoverTarget | null;
-  focusedCommentId: string | null;
-  sketchPointerId: number | null;
-  sketchActive: boolean;
-  sketchHasStroke: boolean;
-  lastPoint: {
-    x: number;
-    y: number;
-  } | null;
 };
 
 type PopoverCapableElement = HTMLDivElement & {
@@ -356,7 +335,7 @@ export function installVariantOverlayUi(controller: VariantRuntimeController): v
     renderOverlay(overlayContainer, snapshot, controller);
     syncOverlayPopover(overlayPopoverHost, snapshot);
     renderCanvas(canvasContainer, snapshot, controller);
-    renderToolLayer(toolLayerContainer, snapshot, controller);
+    renderVariantToolLayer(toolLayerContainer, snapshot, controller, variantOverlayZIndex - 1);
   };
 
   controller.subscribe(render);
@@ -509,480 +488,6 @@ function promoteOverlayPopover(element: HTMLDivElement): void {
   }
 
   showOverlayPopover(element);
-}
-
-function renderToolLayer(
-  container: HTMLDivElement,
-  snapshot: VariantRuntimeSnapshot,
-  controller: VariantRuntimeController,
-): void {
-  const state = getOrCreateToolDomState(controller, container);
-  state.root.style.display = shouldShowToolLayer(snapshot) ? "block" : "none";
-  state.interactionLayer.style.pointerEvents =
-    snapshot.toolMode === "inspect" || snapshot.toolMode === "comment" ? "auto" : "none";
-  state.interactionLayer.style.cursor =
-    snapshot.toolMode === "comment"
-      ? "crosshair"
-      : snapshot.toolMode === "inspect"
-        ? "default"
-        : "auto";
-
-  const shouldShowHighlight =
-    (snapshot.toolMode === "inspect" || snapshot.toolMode === "comment")
-    && state.hoveredTarget;
-  if (shouldShowHighlight && state.hoveredTarget) {
-    const { anchor } = state.hoveredTarget;
-    state.highlightBox.style.display = "block";
-    state.highlightBox.style.left = `${anchor.x}px`;
-    state.highlightBox.style.top = `${anchor.y}px`;
-    state.highlightBox.style.width = `${anchor.width}px`;
-    state.highlightBox.style.height = `${anchor.height}px`;
-  } else {
-    state.highlightBox.style.display = "none";
-  }
-
-  state.sketchCanvas.style.display = snapshot.toolMode === "sketch" ? "block" : "none";
-  state.sketchCanvas.style.pointerEvents = snapshot.toolMode === "sketch" ? "auto" : "none";
-  if (snapshot.toolMode === "sketch") {
-    resizeSketchCanvas(state.sketchCanvas);
-  } else if (state.sketchActive) {
-    state.sketchActive = false;
-    state.sketchPointerId = null;
-    state.lastPoint = null;
-  }
-
-  renderCommentBubbles(state, snapshot, controller);
-}
-
-function getOrCreateToolDomState(
-  controller: VariantRuntimeController,
-  container: HTMLDivElement,
-): VariantToolDomState {
-  const existing = toolDomStates.get(controller);
-  if (existing) {
-    return existing;
-  }
-
-  const root = document.createElement("div");
-  root.setAttribute("data-variant-tool-layer", "true");
-  root.style.cssText = [
-    "position:fixed",
-    "inset:0",
-    `z-index:${variantOverlayZIndex - 1}`,
-    "pointer-events:none",
-  ].join(";");
-
-  const interactionLayer = document.createElement("div");
-  interactionLayer.setAttribute("data-variant-tool-capture", "true");
-  interactionLayer.style.cssText = [
-    "position:fixed",
-    "inset:0",
-    "background:transparent",
-    "pointer-events:none",
-  ].join(";");
-
-  const highlightBox = document.createElement("div");
-  highlightBox.setAttribute("data-variant-hover-highlight", "true");
-  highlightBox.style.cssText = [
-    "display:none",
-    "position:fixed",
-    "border:2px solid rgba(239,68,68,0.92)",
-    "background:rgba(239,68,68,0.1)",
-    "border-radius:12px",
-    "pointer-events:none",
-    "box-shadow:0 0 0 1px rgba(255,255,255,0.7) inset",
-  ].join(";");
-
-  const commentsLayer = document.createElement("div");
-  commentsLayer.setAttribute("data-variant-comments-layer", "true");
-  commentsLayer.style.cssText = [
-    "position:fixed",
-    "inset:0",
-    "pointer-events:none",
-  ].join(";");
-
-  const sketchCanvas = document.createElement("canvas");
-  sketchCanvas.setAttribute("data-variant-sketch-canvas", "true");
-  sketchCanvas.style.cssText = [
-    "display:none",
-    "position:fixed",
-    "inset:0",
-    "width:100vw",
-    "height:100vh",
-    "pointer-events:none",
-    "touch-action:none",
-    "cursor:crosshair",
-  ].join(";");
-
-  root.appendChild(interactionLayer);
-  root.appendChild(highlightBox);
-  root.appendChild(commentsLayer);
-  root.appendChild(sketchCanvas);
-  container.replaceChildren(root);
-
-  const state: VariantToolDomState = {
-    root,
-    interactionLayer,
-    highlightBox,
-    commentsLayer,
-    sketchCanvas,
-    hoveredTarget: null,
-    focusedCommentId: null,
-    sketchPointerId: null,
-    sketchActive: false,
-    sketchHasStroke: false,
-    lastPoint: null,
-  };
-
-  interactionLayer.addEventListener("mousemove", (event) => {
-    const snapshot = controller.getSnapshot();
-    if (snapshot.toolMode !== "inspect" && snapshot.toolMode !== "comment") {
-      return;
-    }
-
-    state.hoveredTarget = resolveHoverTarget(event.clientX, event.clientY, state.root);
-    renderToolLayer(container, snapshot, controller);
-  });
-
-  interactionLayer.addEventListener("mouseleave", () => {
-    if (!state.hoveredTarget) {
-      return;
-    }
-
-    state.hoveredTarget = null;
-    renderToolLayer(container, controller.getSnapshot(), controller);
-  });
-
-  interactionLayer.addEventListener("click", (event) => {
-    const snapshot = controller.getSnapshot();
-    if (snapshot.toolMode !== "comment" || !state.hoveredTarget) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    const commentId = createVariantCommentId();
-    controller.actions.upsertComment({
-      id: commentId,
-      sourceId: state.hoveredTarget.sourceId,
-      instanceId: state.hoveredTarget.instanceId,
-      text: "",
-      anchor: state.hoveredTarget.anchor,
-      viewportPoint: state.hoveredTarget.viewportPoint,
-      visibilityKey: state.hoveredTarget.visibilityKey,
-      createdAt: Date.now(),
-    });
-    state.focusedCommentId = commentId;
-    renderToolLayer(container, controller.getSnapshot(), controller);
-  });
-
-  sketchCanvas.addEventListener("pointerdown", (event) => {
-    const snapshot = controller.getSnapshot();
-    if (snapshot.toolMode !== "sketch") {
-      return;
-    }
-
-    event.preventDefault();
-    resizeSketchCanvas(sketchCanvas);
-    state.sketchActive = true;
-    state.sketchPointerId = event.pointerId;
-    state.lastPoint = { x: event.clientX, y: event.clientY };
-    sketchCanvas.setPointerCapture(event.pointerId);
-    drawSketchSegment(state, event.clientX, event.clientY, event.clientX + 0.01, event.clientY + 0.01);
-  });
-
-  sketchCanvas.addEventListener("pointermove", (event) => {
-    if (!state.sketchActive || state.sketchPointerId !== event.pointerId || !state.lastPoint) {
-      return;
-    }
-
-    event.preventDefault();
-    drawSketchSegment(state, state.lastPoint.x, state.lastPoint.y, event.clientX, event.clientY);
-    state.lastPoint = { x: event.clientX, y: event.clientY };
-  });
-
-  const finalizeSketchPointer = (event: PointerEvent): void => {
-    if (!state.sketchActive || state.sketchPointerId !== event.pointerId) {
-      return;
-    }
-
-    event.preventDefault();
-    state.sketchActive = false;
-    state.sketchPointerId = null;
-    state.lastPoint = null;
-    syncSketchAttachmentFromCanvas(controller, state);
-  };
-
-  sketchCanvas.addEventListener("pointerup", finalizeSketchPointer);
-  sketchCanvas.addEventListener("pointercancel", finalizeSketchPointer);
-
-  toolDomStates.set(controller, state);
-  return state;
-}
-
-function shouldShowToolLayer(snapshot: VariantRuntimeSnapshot): boolean {
-  return (
-    snapshot.toolMode !== "none"
-    || snapshot.comments.length > 0
-    || snapshot.sketch.status === "ready"
-  );
-}
-
-function resolveHoverTarget(
-  clientX: number,
-  clientY: number,
-  toolLayerRoot: HTMLDivElement,
-): VariantHoverTarget | null {
-  const elements = document.elementsFromPoint(clientX, clientY);
-  for (const candidate of elements) {
-    if (!(candidate instanceof HTMLElement)) {
-      continue;
-    }
-
-    if (
-      toolLayerRoot.contains(candidate)
-      || candidate.closest('[data-variant-overlay-root="true"]')
-      || candidate.closest('[data-variiant-canvas-fullscreen="true"]')
-    ) {
-      continue;
-    }
-
-    const boundary = candidate.closest<HTMLElement>("[data-variiant-source-id][data-variiant-instance-id]");
-    if (!boundary) {
-      continue;
-    }
-
-    const rect = candidate.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) {
-      continue;
-    }
-
-    return {
-      sourceId: boundary.dataset.variiantSourceId ?? "",
-      instanceId: boundary.dataset.variiantInstanceId ?? null,
-      displayName: boundary.dataset.variiantDisplayName ?? boundary.dataset.variiantSourceId ?? "Component",
-      anchor: {
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-      },
-      viewportPoint: {
-        x: clientX,
-        y: clientY,
-      },
-      visibilityKey: boundary.dataset.variiantInstanceId ?? null,
-    };
-  }
-
-  return null;
-}
-
-function renderCommentBubbles(
-  state: VariantToolDomState,
-  snapshot: VariantRuntimeSnapshot,
-  controller: VariantRuntimeController,
-): void {
-  const shouldShowComments = snapshot.comments.length > 0 && snapshot.surface === "overlay";
-  if (!shouldShowComments) {
-    state.commentsLayer.replaceChildren();
-    return;
-  }
-
-  state.commentsLayer.innerHTML = snapshot.comments
-    .map((comment, index) => {
-      const placement = getCommentPlacement(comment);
-      if (!placement) {
-        return "";
-      }
-
-      return `
-      <div
-        data-variant-comment-bubble="${escapeAttributeValue(comment.id)}"
-        style="${commentBubbleStyle(placement.left, placement.top)}"
-      >
-        <div style="${commentBubbleHeaderStyle()}">
-          <div style="${commentIndexStyle()}">${index + 1}</div>
-          <div style="${commentLabelStyle()}">${escapeHtml(placement.label)}</div>
-          <button data-variant-comment-remove="${escapeAttributeValue(comment.id)}" style="${commentRemoveButtonStyle()}">Remove</button>
-        </div>
-        <textarea
-          data-variant-comment-input="${escapeAttributeValue(comment.id)}"
-          style="${commentTextareaStyle()}"
-          placeholder="Add contextual direction for this area..."
-        >${escapeHtml(comment.text)}</textarea>
-      </div>`;
-    })
-    .join("");
-
-  state.commentsLayer
-    .querySelectorAll<HTMLTextAreaElement>("[data-variant-comment-input]")
-    .forEach((field) => {
-      field.addEventListener("input", (event) => {
-        const target = event.currentTarget as HTMLTextAreaElement;
-        const id = target.dataset.variantCommentInput;
-        if (!id) {
-          return;
-        }
-
-        controller.actions.updateComment(id, target.value);
-        state.focusedCommentId = id;
-      });
-    });
-
-  state.commentsLayer
-    .querySelectorAll<HTMLButtonElement>("[data-variant-comment-remove]")
-    .forEach((button) => {
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const id = button.dataset.variantCommentRemove;
-        if (!id) {
-          return;
-        }
-
-        controller.actions.removeComment(id);
-        if (state.focusedCommentId === id) {
-          state.focusedCommentId = null;
-        }
-      });
-    });
-
-  if (state.focusedCommentId) {
-    const input = state.commentsLayer.querySelector<HTMLTextAreaElement>(
-      `[data-variant-comment-input="${escapeAttributeValue(state.focusedCommentId)}"]`,
-    );
-    if (input && document.activeElement !== input) {
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-    }
-    state.focusedCommentId = null;
-  }
-}
-
-function getCommentPlacement(comment: VariantComment): {
-  left: number;
-  top: number;
-  label: string;
-} | null {
-  const boundary = resolveCommentBoundary(comment);
-  if (!boundary) {
-    return null;
-  }
-
-  const rect = getRenderableComponentRect(boundary);
-  if (!rect || rect.width < 1 || rect.height < 1) {
-    return null;
-  }
-
-  return {
-    left: Math.min(window.innerWidth - 324, rect.left + rect.width + 12),
-    top: Math.max(12, rect.top),
-    label: boundary.dataset.variiantDisplayName ?? formatCanvasGroupLabel(comment.sourceId),
-  };
-}
-
-function resolveCommentBoundary(comment: VariantComment): HTMLElement | null {
-  if (comment.instanceId) {
-    const boundary = document.querySelector<HTMLElement>(
-      `[data-variiant-instance-id="${escapeAttributeValue(comment.instanceId)}"]`,
-    );
-    if (boundary) {
-      return boundary;
-    }
-  }
-
-  return document.querySelector<HTMLElement>(
-    `[data-variiant-source-id="${escapeAttributeValue(comment.sourceId)}"]`,
-  );
-}
-
-function createVariantCommentId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `variant-comment-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
-}
-
-function resizeSketchCanvas(canvas: HTMLCanvasElement): void {
-  const nextWidth = Math.max(1, Math.round(window.innerWidth));
-  const nextHeight = Math.max(1, Math.round(window.innerHeight));
-  if (canvas.width === nextWidth && canvas.height === nextHeight) {
-    return;
-  }
-
-  const previous = canvas.toDataURL("image/png");
-  canvas.width = nextWidth;
-  canvas.height = nextHeight;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    return;
-  }
-
-  const image = new Image();
-  image.src = previous;
-  image.onload = () => {
-    context.drawImage(image, 0, 0);
-  };
-}
-
-function drawSketchSegment(
-  state: VariantToolDomState,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
-): void {
-  const context = state.sketchCanvas.getContext("2d");
-  if (!context) {
-    return;
-  }
-
-  context.strokeStyle = "rgba(220, 38, 38, 0.92)";
-  context.lineCap = "round";
-  context.lineJoin = "round";
-  context.lineWidth = 6;
-  context.beginPath();
-  context.moveTo(startX, startY);
-  context.lineTo(endX, endY);
-  context.stroke();
-  state.sketchHasStroke = true;
-}
-
-function syncSketchAttachmentFromCanvas(
-  controller: VariantRuntimeController,
-  state: VariantToolDomState,
-): void {
-  if (!state.sketchHasStroke) {
-    controller.actions.clearSketchAttachment();
-    return;
-  }
-
-  const attachment: VariantSketchAttachment = {
-    status: "ready",
-    fileName: "sketch.png",
-    dataUrl: state.sketchCanvas.toDataURL("image/png"),
-    width: state.sketchCanvas.width,
-    height: state.sketchCanvas.height,
-  };
-  controller.actions.setSketchAttachment(attachment);
-}
-
-function clearSketchCanvas(
-  controller: VariantRuntimeController,
-  state: VariantToolDomState,
-): void {
-  const context = state.sketchCanvas.getContext("2d");
-  if (context) {
-    context.clearRect(0, 0, state.sketchCanvas.width, state.sketchCanvas.height);
-  }
-  state.sketchHasStroke = false;
-  state.sketchActive = false;
-  state.sketchPointerId = null;
-  state.lastPoint = null;
-  controller.actions.clearSketchAttachment();
 }
 
 async function submitAgentPrompt(controller: VariantRuntimeController): Promise<void> {
@@ -1768,40 +1273,6 @@ function getDocumentCaptureHeight(): number {
   );
 }
 
-function getRenderableComponentRect(
-  boundary: HTMLElement,
-): { left: number; top: number; width: number; height: number } | null {
-  const boundaryRect = boundary.getBoundingClientRect();
-  if (boundaryRect.width >= 1 && boundaryRect.height >= 1) {
-    return {
-      left: boundaryRect.left,
-      top: boundaryRect.top,
-      width: Math.max(1, Math.round(boundaryRect.width)),
-      height: Math.max(1, Math.round(boundaryRect.height)),
-    };
-  }
-
-  const descendantRects = Array.from(boundary.querySelectorAll<HTMLElement>("*"))
-    .map((element) => element.getBoundingClientRect())
-    .filter((rect) => rect.width >= 1 && rect.height >= 1);
-
-  if (descendantRects.length === 0) {
-    return null;
-  }
-
-  const left = Math.min(...descendantRects.map((rect) => rect.left));
-  const top = Math.min(...descendantRects.map((rect) => rect.top));
-  const right = Math.max(...descendantRects.map((rect) => rect.right));
-  const bottom = Math.max(...descendantRects.map((rect) => rect.bottom));
-
-  return {
-    left,
-    top,
-    width: Math.max(1, Math.round(right - left)),
-    height: Math.max(1, Math.round(bottom - top)),
-  };
-}
-
 export function getVariantCanvasComponentSlot(
   sourceId: string,
   variantName: string,
@@ -2087,30 +1558,12 @@ function getCanvasGroupWidth(
   return clamp(preferredWidth, 280, 1600);
 }
 
-function formatCanvasGroupLabel(sourceId: string): string {
-  const [filePath, namedExport] = sourceId.split("#");
-  const fileName = filePath?.split("/").filter(Boolean).at(-1) ?? sourceId;
-  if (!namedExport) {
-    return fileName;
-  }
-
-  return `${fileName} -> ${namedExport}`;
-}
-
 function slugify(value: string): string {
   const normalized = value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return normalized || "component-screenshot";
-}
-
-function escapeAttributeValue(value: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
 function renderOverlay(
@@ -2433,13 +1886,7 @@ function renderOverlay(
   container
     .querySelector<HTMLButtonElement>('[data-variant-sketch-clear="true"]')
     ?.addEventListener("click", () => {
-      const state = toolDomStates.get(controller);
-      if (!state) {
-        controller.actions.clearSketchAttachment();
-        return;
-      }
-
-      clearSketchCanvas(controller, state);
+      clearVariantToolSketch(controller);
     });
 
   container
@@ -2595,14 +2042,6 @@ function normalizeAgentMessageText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 function hudShellStyle(): string {
   return [
     "position:fixed",
@@ -2748,90 +2187,6 @@ function hintTextStyle(): string {
     "font-size:11px",
     "line-height:1.4",
     "color:#64748b",
-  ].join(";");
-}
-
-function commentBubbleStyle(left: number, top: number): string {
-  return [
-    "position:fixed",
-    `left:${left}px`,
-    `top:${top}px`,
-    "width:312px",
-    "display:flex",
-    "flex-direction:column",
-    "gap:8px",
-    "padding:10px",
-    "border-radius:16px",
-    "background:rgba(255,255,255,0.98)",
-    "border:1px solid rgba(226,232,240,0.96)",
-    "box-shadow:0 16px 40px rgba(15,23,42,0.16)",
-    "pointer-events:auto",
-  ].join(";");
-}
-
-function commentBubbleHeaderStyle(): string {
-  return [
-    "display:flex",
-    "align-items:center",
-    "gap:8px",
-  ].join(";");
-}
-
-function commentIndexStyle(): string {
-  return [
-    "display:inline-flex",
-    "align-items:center",
-    "justify-content:center",
-    "width:22px",
-    "height:22px",
-    "border-radius:999px",
-    "background:#fee2e2",
-    "color:#b91c1c",
-    "font-size:12px",
-    "font-weight:800",
-    "flex-shrink:0",
-  ].join(";");
-}
-
-function commentLabelStyle(): string {
-  return [
-    "flex:1",
-    "min-width:0",
-    "font-size:12px",
-    "font-weight:700",
-    "color:#0f172a",
-    "overflow:hidden",
-    "text-overflow:ellipsis",
-    "white-space:nowrap",
-  ].join(";");
-}
-
-function commentRemoveButtonStyle(): string {
-  return [
-    "border:none",
-    "background:transparent",
-    "color:#94a3b8",
-    "font-size:11px",
-    "font-weight:700",
-    "cursor:pointer",
-    "padding:0",
-  ].join(";");
-}
-
-function commentTextareaStyle(): string {
-  return [
-    "width:100%",
-    "min-height:82px",
-    "border:1px solid #cbd5e1",
-    "border-radius:12px",
-    "padding:10px 12px",
-    "font-size:13px",
-    "line-height:1.45",
-    "color:#0f172a",
-    "background:#fff",
-    "resize:vertical",
-    "box-sizing:border-box",
-    "outline:none",
   ].join(";");
 }
 

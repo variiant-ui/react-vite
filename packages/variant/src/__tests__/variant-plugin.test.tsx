@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toCanvas } from "html-to-image";
 import React from "react";
 
@@ -32,6 +32,20 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+function dispatchWindowEvent(event: Event): void {
+  act(() => {
+    window.dispatchEvent(event);
+  });
+}
+
+function dispatchDomEvent(target: EventTarget, event: Event): boolean {
+  let result = false;
+  act(() => {
+    result = target.dispatchEvent(event);
+  });
+  return result;
+}
 
 describe("variant runtime proxy", () => {
   it("renders the selected variant from the runtime store", () => {
@@ -71,7 +85,7 @@ describe("variant runtime proxy", () => {
     render(<DashboardCard />);
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ",",
         metaKey: true,
@@ -85,7 +99,7 @@ describe("variant runtime proxy", () => {
     });
     expect(document.querySelector('[data-variiant-canvas-fullscreen="true"]')).not.toBeNull();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: "Escape",
         bubbles: true,
@@ -116,7 +130,7 @@ describe("variant runtime proxy", () => {
     render(<DashboardCard />);
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ",",
         metaKey: true,
@@ -140,9 +154,9 @@ describe("variant runtime proxy", () => {
       cancelable: true,
     });
 
-    expect(viewport.dispatchEvent(selectStartEvent)).toBe(false);
+    expect(dispatchDomEvent(viewport, selectStartEvent)).toBe(false);
     expect(selectStartEvent.defaultPrevented).toBe(true);
-    expect(viewport.dispatchEvent(dragStartEvent)).toBe(false);
+    expect(dispatchDomEvent(viewport, dragStartEvent)).toBe(false);
     expect(dragStartEvent.defaultPrevented).toBe(true);
     expect(viewport.getAttribute("style")).toContain("user-select: none");
   });
@@ -165,7 +179,7 @@ describe("variant runtime proxy", () => {
     render(<DashboardCard />);
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ",",
         metaKey: true,
@@ -194,7 +208,7 @@ describe("variant runtime proxy", () => {
       toJSON: () => ({}),
     } as DOMRect);
 
-    viewport.dispatchEvent(new WheelEvent("wheel", {
+    dispatchDomEvent(viewport, new WheelEvent("wheel", {
       deltaY: -160,
       clientX: 700,
       clientY: 450,
@@ -262,7 +276,7 @@ describe("variant runtime proxy", () => {
     );
 
     installVariantOverlay();
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ",",
         metaKey: true,
@@ -298,7 +312,7 @@ describe("variant runtime proxy", () => {
     render(<MatrixCard />);
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
@@ -448,9 +462,9 @@ describe("variant runtime proxy", () => {
       y: 0,
       toJSON: () => ({}),
     } as DOMRect);
-    window.dispatchEvent(new Event("resize"));
+    dispatchWindowEvent(new Event("resize"));
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ",",
         metaKey: true,
@@ -518,7 +532,7 @@ describe("variant runtime proxy", () => {
 
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: "ArrowDown",
         metaKey: true,
@@ -528,7 +542,7 @@ describe("variant runtime proxy", () => {
     );
     expect(getVariantRuntimeState().activeSourceId).toBe("src/components/DataGrid.tsx");
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: "ArrowDown",
         metaKey: true,
@@ -538,7 +552,7 @@ describe("variant runtime proxy", () => {
     );
     expect(getVariantRuntimeState().activeSourceId).toBe("src/components/OrdersTableRuntime.tsx");
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
@@ -553,10 +567,10 @@ describe("variant runtime proxy", () => {
     expect(picker).not.toBeNull();
 
     picker!.value = "src/components/OrdersTableRuntime.tsx";
-    picker!.dispatchEvent(new Event("change", { bubbles: true }));
+    dispatchDomEvent(picker!, new Event("change", { bubbles: true }));
     expect(getVariantRuntimeState().activeSourceId).toBe("src/components/OrdersTableRuntime.tsx");
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: "ArrowUp",
         metaKey: true,
@@ -566,7 +580,7 @@ describe("variant runtime proxy", () => {
     );
     expect(getVariantRuntimeState().activeSourceId).toBe("src/components/DataGrid.tsx");
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: "ArrowDown",
         metaKey: true,
@@ -716,7 +730,7 @@ describe("variant runtime proxy", () => {
     render(<OrdersTable />);
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
@@ -871,7 +885,7 @@ describe("variant runtime proxy", () => {
     render(<OrdersTable />);
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
@@ -981,7 +995,7 @@ describe("variant runtime proxy", () => {
       toJSON: () => ({}),
     } as DOMRect);
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
@@ -1129,7 +1143,7 @@ describe("variant runtime proxy", () => {
       toJSON: () => ({}),
     } as DOMRect);
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
@@ -1235,7 +1249,7 @@ describe("variant runtime proxy", () => {
     render(<OrdersTable />);
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
@@ -1395,7 +1409,7 @@ describe("variant runtime proxy", () => {
     render(<OrdersTable />);
     installVariantOverlay();
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
@@ -1540,7 +1554,7 @@ describe("variant runtime proxy", () => {
       toJSON: () => ({}),
     } as DOMRect);
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new KeyboardEvent("keydown", {
         key: ".",
         metaKey: true,
