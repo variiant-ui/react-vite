@@ -16,6 +16,8 @@ const overlayStyleTagId = "variiant-overlay-styles";
 const variantCanvasZIndex = 2147483646;
 const variantOverlayZIndex = 2147483647;
 const variantOverlayPopoverSelector = '[data-variant-overlay-popover="true"]';
+const variantTweakCatalogRoutePath = "/__variiant/tweak/catalog";
+const variantTweakApplyRoutePath = "/__variiant/tweak/apply";
 const agentBridgeStates = new WeakMap<VariantRuntimeController, {
   loaded: boolean;
   loadingPromise: Promise<void> | null;
@@ -1085,6 +1087,142 @@ async function submitAgentPrompt(controller: VariantRuntimeController): Promise<
   }
 }
 
+async function loadDeterministicTweaks(controller: VariantRuntimeController): Promise<void> {
+  await loadAgentBridgeConfig(controller);
+  const snapshot = controller.getSnapshot();
+  const activeComponent = getActiveMountedComponent(snapshot);
+  const selectedVariant = activeComponent
+    ? snapshot.selections[activeComponent.sourceId] ?? activeComponent.selected
+    : null;
+  if (!activeComponent || !selectedVariant) {
+    controller.actions.finishLoadingTweaks({
+      error: "Select a mounted component before loading tweaks.",
+    });
+    return;
+  }
+
+  if (selectedVariant === "source") {
+    controller.actions.finishLoadingTweaks({
+      error: "Select a generated variant before loading deterministic tweaks.",
+    });
+    return;
+  }
+
+  controller.actions.startLoadingTweaks();
+  const bridgeState = getAgentBridgeState(controller);
+
+  try {
+    const response = await fetch(variantTweakCatalogRoutePath, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(bridgeState.token ? { "X-Variiant-Token": bridgeState.token } : {}),
+      },
+      body: JSON.stringify({
+        sourceId: activeComponent.sourceId,
+        variantName: selectedVariant,
+      }),
+    });
+
+    if (!response.ok) {
+      controller.actions.finishLoadingTweaks({
+        error: await readResponseText(response),
+      });
+      return;
+    }
+
+    const payload = await response.json() as {
+      targetFile?: string | null;
+      entries?: Array<{
+        id: string;
+        kind: "jsx-text" | "string-prop";
+        label: string;
+        currentValue: string;
+      }>;
+    };
+
+    controller.actions.finishLoadingTweaks({
+      targetFile: payload.targetFile ?? null,
+      entries: payload.entries ?? [],
+      error: null,
+    });
+  } catch (error) {
+    controller.actions.finishLoadingTweaks({
+      error: error instanceof Error ? error.message : "Failed to load deterministic tweaks.",
+    });
+  }
+}
+
+async function applyDeterministicTweak(
+  controller: VariantRuntimeController,
+  entryId: string,
+): Promise<void> {
+  await loadAgentBridgeConfig(controller);
+  const snapshot = controller.getSnapshot();
+  const activeComponent = getActiveMountedComponent(snapshot);
+  const selectedVariant = activeComponent
+    ? snapshot.selections[activeComponent.sourceId] ?? activeComponent.selected
+    : null;
+  const entry = snapshot.tweaks.entries.find((candidate) => candidate.id === entryId);
+  if (!activeComponent || !selectedVariant || !entry) {
+    controller.actions.finishApplyingTweaks({
+      error: "The requested tweak entry is no longer available.",
+    });
+    return;
+  }
+
+  controller.actions.startApplyingTweaks();
+  const bridgeState = getAgentBridgeState(controller);
+
+  try {
+    const response = await fetch(variantTweakApplyRoutePath, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(bridgeState.token ? { "X-Variiant-Token": bridgeState.token } : {}),
+      },
+      body: JSON.stringify({
+        sourceId: activeComponent.sourceId,
+        variantName: selectedVariant,
+        entryId,
+        nextValue: entry.draftValue,
+      }),
+    });
+
+    if (!response.ok) {
+      controller.actions.finishApplyingTweaks({
+        error: await readResponseText(response),
+      });
+      return;
+    }
+
+    const payload = await response.json() as {
+      targetFile?: string | null;
+      changedFiles?: string[];
+      entries?: Array<{
+        id: string;
+        kind: "jsx-text" | "string-prop";
+        label: string;
+        currentValue: string;
+      }>;
+    };
+
+    controller.actions.finishApplyingTweaks({
+      targetFile: payload.targetFile ?? null,
+      entries: payload.entries ?? [],
+      error: null,
+    });
+    if (Array.isArray(payload.changedFiles) && payload.changedFiles.length > 0) {
+      controller.actions.applyReviewChangedFiles(payload.changedFiles);
+      controller.actions.setDockMode("tweak");
+    }
+  } catch (error) {
+    controller.actions.finishApplyingTweaks({
+      error: error instanceof Error ? error.message : "Failed to apply the deterministic tweak.",
+    });
+  }
+}
+
 function buildAgentRequestPayload(
   snapshot: VariantRuntimeSnapshot,
   attachments: VariantAgentRequestAttachment[] = [],
@@ -2059,7 +2197,28 @@ function renderOverlay(
         ? "Comment mode is active. Click the live page to pin contextual comments to visible component instances."
         : snapshot.toolMode === "sketch"
           ? "Sketch mode is active. Draw directly on top of the page; the red overlay will be attached to the next run."
-          : "Tweak mode is active. Deterministic edits land in the next commit.";
+          : "Tweak mode is active. Load deterministic copy targets from the active variant file and apply narrow edits locally.";
+  const tweakLoadDisabled = !active || activeSelection === "source";
+  const tweakEntriesMarkup = snapshot.tweaks.entries.length > 0
+    ? `<div style="${stackStyle()}">${snapshot.tweaks.entries.map((entry) => `
+      <div style="${reviewCardStyle()}">
+        <div style="${reviewResultTitleStyle()}">${escapeHtml(entry.label)}</div>
+        <div style="${hintTextStyle()}">Current: ${escapeHtml(entry.currentValue)}</div>
+        <input
+          data-variant-tweak-input="${escapeHtml(entry.id)}"
+          value="${escapeHtml(entry.draftValue)}"
+          style="${textInputStyle()}"
+        />
+        <div style="${buttonRowStyle()}">
+          <button
+            data-variant-tweak-apply="${escapeHtml(entry.id)}"
+            style="${buttonStyle(snapshot.tweaks.status === "applying" ? "disabled" : "secondary")}"
+            ${snapshot.tweaks.status === "applying" ? "disabled" : ""}
+          >Apply</button>
+        </div>
+      </div>
+    `).join("")}</div>`
+    : `<div style="${hintTextStyle()}">Load copy targets from the active variant to make small deterministic text edits without another agent run.</div>`;
   const attachmentChipsMarkup = [
     snapshot.comments.length > 0
       ? `<div style="${attachmentChipStyle()}">${escapeHtml(`${snapshot.comments.length} comment${snapshot.comments.length === 1 ? "" : "s"}`)}</div>`
@@ -2164,7 +2323,16 @@ function renderOverlay(
     ${snapshot.dockMode === "tweak" ? `
     <div style="${sectionCardStyle()}">
       <div style="${sectionLabelStyle()}">Deterministic Tweaks</div>
-      <div style="${hintTextStyle()}">Copy-only tweaks are the next implementation slice. This mode is now wired into the runtime state and shell.</div>
+      <div style="${hintTextStyle()}">${escapeHtml(snapshot.tweaks.targetFile ?? "Select a generated variant to inspect deterministic copy tweaks.")}</div>
+      <div style="${buttonRowStyle()}">
+        <button
+          data-variant-tweaks-load="true"
+          style="${buttonStyle(snapshot.tweaks.status === "loading" || tweakLoadDisabled ? "disabled" : "secondary")}"
+          ${snapshot.tweaks.status === "loading" || tweakLoadDisabled ? "disabled" : ""}
+        >${snapshot.tweaks.status === "loading" ? "Loading..." : "Load Copy Tweaks"}</button>
+      </div>
+      ${snapshot.tweaks.error ? `<div style="${errorNoteStyle()}">${escapeHtml(snapshot.tweaks.error)}</div>` : ""}
+      ${tweakEntriesMarkup}
     </div>` : ""}
     ${errorSummaryMarkup}
     ${changedFilesMarkup}
@@ -2273,6 +2441,39 @@ function renderOverlay(
 
       clearSketchCanvas(controller, state);
     });
+
+  container
+    .querySelector<HTMLButtonElement>('[data-variant-tweaks-load="true"]')
+    ?.addEventListener("click", () => {
+      void loadDeterministicTweaks(controller);
+    });
+
+  container
+    .querySelectorAll<HTMLInputElement>("[data-variant-tweak-input]")
+    .forEach((field) => {
+      field.addEventListener("input", (event) => {
+        const target = event.currentTarget as HTMLInputElement;
+        const id = target.dataset.variantTweakInput;
+        if (!id) {
+          return;
+        }
+
+        controller.actions.updateTweakDraft(id, target.value);
+      });
+    });
+
+  container
+    .querySelectorAll<HTMLButtonElement>("[data-variant-tweak-apply]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const id = button.dataset.variantTweakApply;
+        if (!id) {
+          return;
+        }
+
+        void applyDeterministicTweak(controller, id);
+      });
+    });
 }
 
 type PreservedOverlayFocus =
@@ -2281,11 +2482,17 @@ type PreservedOverlayFocus =
       selectionStart: number | null;
       selectionEnd: number | null;
     }
+  | {
+      key: "tweak-input";
+      tweakId: string;
+      selectionStart: number | null;
+      selectionEnd: number | null;
+    }
   | null;
 
 function capturePreservedOverlayFocus(container: HTMLDivElement): PreservedOverlayFocus {
   const activeElement = document.activeElement;
-  if (!(activeElement instanceof HTMLTextAreaElement)) {
+  if (!(activeElement instanceof HTMLTextAreaElement) && !(activeElement instanceof HTMLInputElement)) {
     return null;
   }
 
@@ -2293,15 +2500,24 @@ function capturePreservedOverlayFocus(container: HTMLDivElement): PreservedOverl
     return null;
   }
 
-  if (!activeElement.matches('[data-variant-agent-prompt="true"]')) {
-    return null;
+  if (activeElement instanceof HTMLTextAreaElement && activeElement.matches('[data-variant-agent-prompt="true"]')) {
+    return {
+      key: "prompt",
+      selectionStart: activeElement.selectionStart,
+      selectionEnd: activeElement.selectionEnd,
+    };
   }
 
-  return {
-    key: "prompt",
-    selectionStart: activeElement.selectionStart,
-    selectionEnd: activeElement.selectionEnd,
-  };
+  if (activeElement instanceof HTMLInputElement && activeElement.matches("[data-variant-tweak-input]")) {
+    return {
+      key: "tweak-input",
+      tweakId: activeElement.dataset.variantTweakInput ?? "",
+      selectionStart: activeElement.selectionStart,
+      selectionEnd: activeElement.selectionEnd,
+    };
+  }
+
+  return null;
 }
 
 function restorePreservedOverlayFocus(
@@ -2314,6 +2530,20 @@ function restorePreservedOverlayFocus(
 
   if (preservedFocus.key === "prompt") {
     const nextField = container.querySelector<HTMLTextAreaElement>('[data-variant-agent-prompt="true"]');
+    if (!nextField || nextField.disabled) {
+      return;
+    }
+
+    nextField.focus();
+    if (preservedFocus.selectionStart !== null && preservedFocus.selectionEnd !== null) {
+      nextField.setSelectionRange(preservedFocus.selectionStart, preservedFocus.selectionEnd);
+    }
+  }
+
+  if (preservedFocus.key === "tweak-input") {
+    const nextField = container.querySelector<HTMLInputElement>(
+      `[data-variant-tweak-input="${escapeAttributeValue(preservedFocus.tweakId)}"]`,
+    );
     if (!nextField || nextField.disabled) {
       return;
     }
@@ -2708,6 +2938,21 @@ function textareaStyle(): string {
     "font-size:13px",
     "line-height:1.5",
     "resize:vertical",
+    "outline:none",
+    "box-sizing:border-box",
+  ].join(";");
+}
+
+function textInputStyle(): string {
+  return [
+    "width:100%",
+    "height:34px",
+    "border:1px solid #cbd5e1",
+    "border-radius:10px",
+    "background:#fff",
+    "color:#0f172a",
+    "padding:0 10px",
+    "font-size:13px",
     "outline:none",
     "box-sizing:border-box",
   ].join(";");

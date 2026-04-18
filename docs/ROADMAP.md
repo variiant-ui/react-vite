@@ -25,6 +25,8 @@ Outcome:
 
 ## Phase 1: Replace the runtime shell
 
+Status: shipped
+
 Deliver:
 
 - transient bottom-centered dock
@@ -37,6 +39,8 @@ Why first:
 - every other workflow depends on a better browser shell
 
 ## Phase 2: Reset review around components
+
+Status: shipped
 
 Deliver:
 
@@ -51,6 +55,8 @@ Why now:
 
 ## Phase 3: Add contextual comments
 
+Status: shipped
+
 Deliver:
 
 - hover targeting on the live DOM
@@ -64,6 +70,8 @@ Why now:
 
 ## Phase 4: Add sketch mode
 
+Status: shipped
+
 Deliver:
 
 - overlay drawing canvas
@@ -75,6 +83,8 @@ Why after comments:
 - sketching is more complex and should land on top of the clearer dock and session model
 
 ## Phase 5: Improve agent payloads
+
+Status: shipped for comments/sketch/session materialization; still open for broader payload polish
 
 Deliver:
 
@@ -88,6 +98,8 @@ Outcome:
 - prompts become shorter because the context is richer
 
 ## Phase 6: Deterministic tweaks v1
+
+Status: shipped for copy-only tweaks
 
 Deliver:
 

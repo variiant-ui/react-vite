@@ -9,8 +9,10 @@ It lets you accumulate multiple implementations of the same component and switch
 The package currently gives you:
 
 - live runtime switching between source and variant implementations
-- a transient in-browser runtime surface for prompting and selection
+- a transient in-browser runtime surface with `Ideate`, `Review`, and `Tweak` modes
 - a fullscreen comparison canvas
+- contextual comments and sketch attachments for richer ideation sessions
+- copy-only deterministic tweaks for active generated variants
 - a local agent bridge that creates or edits variant files under `.variiant/variants/`
 
 ## Product direction
@@ -135,15 +137,15 @@ Variant files live under `.variiant/variants/` and mirror your source tree. A fo
 
 When this file is present, the runtime can send structured local sessions to that CLI. Session files are stored under `.variiant/sessions/<session-id>/` and currently include the request payload plus any materialized image attachments.
 
-This session model is also the basis for the next runtime direction:
+This session model now carries richer ideation context:
 
 - contextual comments
 - sketch attachments
 - clearer review metadata
-- deterministic tweak operations
+- structured tweak-adjacent context for cheap follow-up edits
 
 ## Direction notes
 
 The current comparison canvas still exists, but the target direction is component-focused review. Duplicated page-mode comparison is no longer the planned long-term model.
 
-Likewise, the next planned refinement path is not "more prompt text." It is richer structured context for ideation and deterministic tweaks for cheap follow-up edits such as copy changes.
+Likewise, the refinement path is not "more prompt text." It is richer structured context for ideation and deterministic tweaks for cheap follow-up edits such as copy changes.

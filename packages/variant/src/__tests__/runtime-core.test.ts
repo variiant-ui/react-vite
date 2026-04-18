@@ -203,6 +203,58 @@ describe("variant runtime controller", () => {
     expect(controller.getSnapshot().sketch.status).toBe("empty");
   });
 
+  it("tracks deterministic tweak loading, editing, and review registration", () => {
+    const controller = createVariantRuntimeController();
+
+    controller.actions.startLoadingTweaks();
+    expect(controller.getSnapshot().tweaks.status).toBe("loading");
+
+    controller.actions.finishLoadingTweaks({
+      targetFile: ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
+      entries: [
+        {
+          id: "jsx-text:1:2",
+          kind: "jsx-text",
+          label: "Visible text",
+          currentValue: "Approve order",
+        },
+      ],
+    });
+    controller.actions.updateTweakDraft("jsx-text:1:2", "Approve invoice");
+    expect(controller.getSnapshot().tweaks.entries[0]).toMatchObject({
+      currentValue: "Approve order",
+      draftValue: "Approve invoice",
+    });
+
+    controller.actions.startApplyingTweaks();
+    expect(controller.getSnapshot().tweaks.status).toBe("applying");
+
+    controller.actions.finishApplyingTweaks({
+      targetFile: ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
+      entries: [
+        {
+          id: "jsx-text:1:2",
+          kind: "jsx-text",
+          label: "Visible text",
+          currentValue: "Approve invoice",
+        },
+      ],
+    });
+    controller.actions.applyReviewChangedFiles([
+      ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
+    ]);
+
+    expect(controller.getSnapshot().tweaks.entries[0]).toMatchObject({
+      currentValue: "Approve invoice",
+      draftValue: "Approve invoice",
+    });
+    expect(controller.getSnapshot().reviewResults).toEqual([
+      expect.objectContaining({
+        sourceId: "src/components/OrdersTable.tsx",
+      }),
+    ]);
+  });
+
   it("keeps temporary selections separate from persisted live selections", () => {
     const persistedSelections: Record<string, string>[] = [];
     const controller = createVariantRuntimeController({

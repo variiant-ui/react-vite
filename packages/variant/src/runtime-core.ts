@@ -99,6 +99,23 @@ export type VariantReviewResult = {
   variantNames: string[];
 };
 
+export type VariantTweakCatalogEntry = {
+  id: string;
+  kind: "jsx-text" | "string-prop";
+  label: string;
+  currentValue: string;
+  draftValue: string;
+};
+
+export type VariantTweakStatus = "idle" | "loading" | "applying";
+
+export type VariantTweakState = {
+  status: VariantTweakStatus;
+  targetFile: string | null;
+  entries: VariantTweakCatalogEntry[];
+  error: string | null;
+};
+
 export type VariantAgentStreamingMode = "auto" | "text" | "none";
 
 export type VariantAgentAvailability = {
@@ -142,6 +159,7 @@ export type RuntimeState = {
   agent: VariantAgentState;
   comments: VariantComment[];
   sketch: VariantSketchAttachment;
+  tweaks: VariantTweakState;
   reviewResults: VariantReviewResult[];
 };
 
@@ -209,6 +227,21 @@ export type VariantRuntimeController = {
     clearComments: () => void;
     setSketchAttachment: (attachment: VariantSketchAttachment) => void;
     clearSketchAttachment: () => void;
+    startLoadingTweaks: () => void;
+    finishLoadingTweaks: (result: {
+      targetFile?: string | null;
+      entries?: Array<Omit<VariantTweakCatalogEntry, "draftValue">>;
+      error?: string | null;
+    }) => void;
+    updateTweakDraft: (id: string, value: string) => void;
+    startApplyingTweaks: () => void;
+    finishApplyingTweaks: (result: {
+      targetFile?: string | null;
+      entries?: Array<Omit<VariantTweakCatalogEntry, "draftValue">>;
+      error?: string | null;
+    }) => void;
+    clearTweaks: () => void;
+    applyReviewChangedFiles: (changedFiles: string[]) => void;
     startAgentRun: () => void;
     appendAgentLog: (stream: VariantAgentLogEntry["stream"], text: string) => void;
     replaceLatestAgentLog: (stream: VariantAgentLogEntry["stream"], text: string) => void;
@@ -420,6 +453,12 @@ export function createVariantRuntimeController(options: {
       width: null,
       height: null,
     },
+    tweaks: {
+      status: "idle",
+      targetFile: null,
+      entries: [],
+      error: null,
+    },
     reviewResults: [],
     selections: storage?.readSelections() ?? {},
     temporarySelections: null,
@@ -469,6 +508,7 @@ export function createVariantRuntimeController(options: {
       agent: state.agent,
       comments: state.comments,
       sketch: state.sketch,
+      tweaks: state.tweaks,
       reviewResults: state.reviewResults,
       selections: state.selections,
       temporarySelections: state.temporarySelections,
@@ -487,6 +527,37 @@ export function createVariantRuntimeController(options: {
 
   const persistShortcuts = (): void => {
     storage?.writeShortcutOverrides(state.shortcutConfig);
+  };
+
+  const resetTweakState = (): void => {
+    state.tweaks = {
+      status: "idle",
+      targetFile: null,
+      entries: [],
+      error: null,
+    };
+  };
+
+  const applyReviewResultsFromChangedFiles = (changedFiles: string[]): void => {
+    const reviewResults = inferReviewResults(changedFiles);
+    if (reviewResults.length === 0) {
+      return;
+    }
+
+    state.reviewResults = reviewResults;
+    state.dockMode = "review";
+    if (reviewResults.some((entry) => entry.sourceId === state.activeSourceId)) {
+      state.canvas = {
+        ...state.canvas,
+        targetSourceId: state.activeSourceId,
+      };
+      return;
+    }
+
+    state.canvas = {
+      ...state.canvas,
+      targetSourceId: reviewResults[0]?.sourceId ?? state.canvas.targetSourceId,
+    };
   };
 
   const moveActiveComponent = (direction: Direction): void => {
@@ -656,6 +727,7 @@ export function createVariantRuntimeController(options: {
           targetSourceId: sourceId,
         };
         state.activeSourceId = sourceId;
+        resetTweakState();
         emit();
       },
       setCanvasCamera(camera) {
@@ -715,6 +787,7 @@ export function createVariantRuntimeController(options: {
           ...state.canvas,
           targetSourceId: sourceId,
         };
+        resetTweakState();
         emit();
       },
       selectVariant(sourceId, variantName) {
@@ -725,6 +798,7 @@ export function createVariantRuntimeController(options: {
 
         state.selections[sourceId] = variantName;
         persistSelections();
+        resetTweakState();
         emit();
       },
       setTemporarySelections(selections) {
@@ -878,6 +952,68 @@ export function createVariantRuntimeController(options: {
         };
         emit();
       },
+      startLoadingTweaks() {
+        state.tweaks = {
+          ...state.tweaks,
+          status: "loading",
+          error: null,
+        };
+        emit();
+      },
+      finishLoadingTweaks(result) {
+        state.tweaks = {
+          status: "idle",
+          targetFile: result.targetFile ?? null,
+          entries: (result.entries ?? []).map((entry) => ({
+            ...entry,
+            draftValue: entry.currentValue,
+          })),
+          error: result.error ?? null,
+        };
+        emit();
+      },
+      updateTweakDraft(id, value) {
+        state.tweaks = {
+          ...state.tweaks,
+          entries: state.tweaks.entries.map((entry) =>
+            entry.id === id
+              ? {
+                  ...entry,
+                  draftValue: value,
+                }
+              : entry
+          ),
+        };
+        emit();
+      },
+      startApplyingTweaks() {
+        state.tweaks = {
+          ...state.tweaks,
+          status: "applying",
+          error: null,
+        };
+        emit();
+      },
+      finishApplyingTweaks(result) {
+        state.tweaks = {
+          status: "idle",
+          targetFile: result.targetFile ?? state.tweaks.targetFile,
+          entries: (result.entries ?? []).map((entry) => ({
+            ...entry,
+            draftValue: entry.currentValue,
+          })),
+          error: result.error ?? null,
+        };
+        emit();
+      },
+      clearTweaks() {
+        resetTweakState();
+        emit();
+      },
+      applyReviewChangedFiles(changedFiles) {
+        applyReviewResultsFromChangedFiles(changedFiles);
+        emit();
+      },
       startAgentRun() {
         state.dockMode = "ideate";
         state.agent.status = "running";
@@ -936,27 +1072,12 @@ export function createVariantRuntimeController(options: {
       },
       finishAgentRun(result = {}) {
         const exitCode = result.exitCode ?? 0;
-        const reviewResults = inferReviewResults(result.changedFiles ?? []);
         state.agent.status = result.error || exitCode !== 0 ? "error" : "success";
         state.agent.sessionId = result.sessionId ?? state.agent.sessionId;
         state.agent.exitCode = result.exitCode ?? null;
         state.agent.changedFiles = result.changedFiles ?? [];
         state.agent.error = result.error ?? null;
-        if (reviewResults.length > 0) {
-          state.reviewResults = reviewResults;
-          state.dockMode = "review";
-          if (reviewResults.some((entry) => entry.sourceId === state.activeSourceId)) {
-            state.canvas = {
-              ...state.canvas,
-              targetSourceId: state.activeSourceId,
-            };
-          } else {
-            state.canvas = {
-              ...state.canvas,
-              targetSourceId: reviewResults[0]?.sourceId ?? state.canvas.targetSourceId,
-            };
-          }
-        }
+        applyReviewResultsFromChangedFiles(result.changedFiles ?? []);
         emit();
       },
       clearAgentRun() {

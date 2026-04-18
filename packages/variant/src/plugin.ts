@@ -7,6 +7,7 @@ import path from "node:path";
 import type { Plugin } from "vite";
 import { buildAgentPrompt } from "./agent-prompt";
 import type { VariantAgentStreamingMode } from "./runtime-core";
+import { analyzeVariantCopyTweaks, applyVariantCopyTweak } from "./tweak-text";
 import {
   defaultVariantsDir,
   ensureVariantWorkspaceGitignore,
@@ -69,6 +70,8 @@ const importResolutionExtensions = [
 const variantConfigFileName = "variiant.config.json";
 const variantConfigRoute = "/__variiant/config";
 const variantAgentRunRoute = "/__variiant/agent/run";
+const variantTweakCatalogRoute = "/__variiant/tweak/catalog";
+const variantTweakApplyRoute = "/__variiant/tweak/apply";
 const workspaceSnapshotIgnore = new Set([".git", "coverage", "dist", "node_modules"]);
 const developmentOverlayBootstrapVirtualId = "virtual:variiant/dev-bootstrap";
 const resolvedDevelopmentOverlayBootstrapVirtualId = `\0${developmentOverlayBootstrapVirtualId}`;
@@ -213,6 +216,31 @@ export function variantPlugin(options: VariantPluginOptions = {}): Plugin {
           ).finally(() => {
             activeAgentRuns = Math.max(0, activeAgentRuns - 1);
           });
+          return;
+        }
+
+        if (pathname === variantTweakCatalogRoute && req.method === "POST") {
+          void handleVariantTweakCatalogRequest(
+            req,
+            res,
+            projectRoot,
+            agentSessionToken,
+            options.variantsDir,
+          );
+          return;
+        }
+
+        if (pathname === variantTweakApplyRoute && req.method === "POST") {
+          void handleVariantTweakApplyRequest(
+            req,
+            res,
+            projectRoot,
+            agentSessionToken,
+            options.variantsDir,
+            async (changedFiles) => {
+              await applyAgentVariantRefresh(changedFiles, "hmr");
+            },
+          );
           return;
         }
 
@@ -894,6 +922,177 @@ async function readRequestBody(req: IncomingMessage): Promise<string> {
   }
 
   return Buffer.concat(chunks).toString("utf8");
+}
+
+async function handleVariantTweakCatalogRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  projectRoot: string,
+  sessionToken: string,
+  configuredVariantsDir?: string,
+): Promise<void> {
+  if (req.headers["x-variiant-token"] !== sessionToken) {
+    writeJsonResponse(res, 403, {
+      error: "Missing or invalid variiant session token.",
+    });
+    return;
+  }
+
+  const requestPayload = await parseJsonRequestBody(req, res);
+  if (!requestPayload) {
+    return;
+  }
+
+  try {
+    const target = resolveVariantTweakTarget(projectRoot, configuredVariantsDir, requestPayload);
+    const source = fs.readFileSync(target.absolutePath, "utf8");
+    writeJsonResponse(res, 200, {
+      targetFile: target.relativePath,
+      entries: analyzeVariantCopyTweaks(source).map((entry) => ({
+        id: entry.id,
+        kind: entry.kind,
+        label: entry.label,
+        currentValue: entry.currentValue,
+      })),
+    });
+  } catch (error) {
+    writeJsonResponse(res, 400, {
+      error: error instanceof Error ? error.message : "Failed to analyze tweak targets.",
+    });
+  }
+}
+
+async function handleVariantTweakApplyRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  projectRoot: string,
+  sessionToken: string,
+  configuredVariantsDir: string | undefined,
+  onComplete?: (changedFiles: string[]) => Promise<void>,
+): Promise<void> {
+  if (req.headers["x-variiant-token"] !== sessionToken) {
+    writeJsonResponse(res, 403, {
+      error: "Missing or invalid variiant session token.",
+    });
+    return;
+  }
+
+  const requestPayload = await parseJsonRequestBody(req, res);
+  if (!requestPayload) {
+    return;
+  }
+
+  const entryId = typeof requestPayload.entryId === "string" ? requestPayload.entryId : null;
+  const nextValue = typeof requestPayload.nextValue === "string" ? requestPayload.nextValue : null;
+  if (!entryId || nextValue === null) {
+    writeJsonResponse(res, 400, {
+      error: "The tweak apply request must include entryId and nextValue.",
+    });
+    return;
+  }
+
+  try {
+    const target = resolveVariantTweakTarget(projectRoot, configuredVariantsDir, requestPayload);
+    const source = fs.readFileSync(target.absolutePath, "utf8");
+    const result = applyVariantCopyTweak(source, {
+      id: entryId,
+      nextValue,
+    });
+
+    fs.writeFileSync(target.absolutePath, result.code);
+    const changedFiles = [target.relativePath];
+    await onComplete?.(changedFiles);
+
+    writeJsonResponse(res, 200, {
+      targetFile: target.relativePath,
+      changedFiles,
+      entries: analyzeVariantCopyTweaks(result.code).map((entry) => ({
+        id: entry.id,
+        kind: entry.kind,
+        label: entry.label,
+        currentValue: entry.currentValue,
+      })),
+    });
+  } catch (error) {
+    writeJsonResponse(res, 400, {
+      error: error instanceof Error ? error.message : "Failed to apply the deterministic tweak.",
+    });
+  }
+}
+
+async function parseJsonRequestBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<Record<string, unknown> | null> {
+  const requestBody = await readRequestBody(req);
+  if (!requestBody) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(requestBody) as Record<string, unknown>;
+  } catch {
+    writeJsonResponse(res, 400, {
+      error: "Invalid JSON request body.",
+    });
+    return null;
+  }
+}
+
+function resolveVariantTweakTarget(
+  projectRoot: string,
+  configuredVariantsDir: string | undefined,
+  requestPayload: Record<string, unknown>,
+): {
+  absolutePath: string;
+  relativePath: string;
+  sourceId: string;
+  variantName: string;
+} {
+  const sourceId = typeof requestPayload.sourceId === "string" ? requestPayload.sourceId : null;
+  const variantName = typeof requestPayload.variantName === "string" ? requestPayload.variantName : null;
+  if (!sourceId || !variantName) {
+    throw new Error("The tweak request must include sourceId and variantName.");
+  }
+
+  if (variantName === "source") {
+    throw new Error("Deterministic tweaks require an active variant file, not the source implementation.");
+  }
+
+  const variantsDir = resolveVariantsDir(projectRoot, configuredVariantsDir);
+  const { sourceRelativePath, exportName } = parseVariantSourceId(sourceId);
+  const variantDirectory = path.join(projectRoot, variantsDir, sourceRelativePath, exportName);
+  const absolutePath = sourceExtensions
+    .map((extension) => path.join(variantDirectory, `${variantName}${extension}`))
+    .find((candidate) => fs.existsSync(candidate));
+  if (!absolutePath) {
+    throw new Error(`The active variant file does not exist: ${normalizePath(path.relative(projectRoot, path.join(variantDirectory, `${variantName}.tsx`)))}`);
+  }
+
+  return {
+    absolutePath,
+    relativePath: normalizePath(path.relative(projectRoot, absolutePath)),
+    sourceId,
+    variantName,
+  };
+}
+
+function parseVariantSourceId(sourceId: string): {
+  sourceRelativePath: string;
+  exportName: string;
+} {
+  const hashIndex = sourceId.indexOf("#");
+  if (hashIndex === -1) {
+    return {
+      sourceRelativePath: sourceId,
+      exportName: "default",
+    };
+  }
+
+  return {
+    sourceRelativePath: sourceId.slice(0, hashIndex),
+    exportName: sourceId.slice(hashIndex + 1) || "default",
+  };
 }
 
 type VariantAgentSession = {

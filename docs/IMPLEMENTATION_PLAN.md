@@ -10,6 +10,17 @@ Implement the next product phase for `@variiant-ui/react-vite`:
 - add deterministic post-generation tweaks, starting with copy
 - preserve the existing package boundary: one package, one Vite plugin, one browser workflow
 
+## Current implementation status
+
+The current repo now includes:
+
+- explicit `Ideate`, `Review`, and `Tweak` dock modes
+- component-focused review results instead of page-mode comparison as the primary direction
+- contextual comments and sketch attachments in runtime state and session payloads
+- copy-only deterministic tweak analysis and apply routes for generated variants
+
+The remaining work in this plan is mostly about expanding the deterministic tweak surface and tightening the overall workflow polish.
+
 ## Architectural constraints
 
 These constraints stay fixed while the runtime evolves:

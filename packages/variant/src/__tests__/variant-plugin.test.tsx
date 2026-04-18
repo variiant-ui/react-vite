@@ -1311,6 +1311,142 @@ describe("variant runtime proxy", () => {
     ]);
   });
 
+  it("loads and applies deterministic copy tweaks from tweak mode", async () => {
+    let tweakCatalogRequests = 0;
+    let tweakApplyRequests = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/__variiant/config")) {
+        return new Response(JSON.stringify({
+          token: "test-token",
+          agent: {
+            enabled: true,
+            commandLabel: "codex exec --json",
+            message: null,
+            streaming: "text",
+            supportsImages: true,
+          },
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+
+      if (url.endsWith("/__variiant/tweak/catalog")) {
+        tweakCatalogRequests += 1;
+        return new Response(JSON.stringify({
+          targetFile: ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
+          entries: [
+            {
+              id: "jsx-text:1:2",
+              kind: "jsx-text",
+              label: "Visible text",
+              currentValue: "Approve order",
+            },
+          ],
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+
+      tweakApplyRequests += 1;
+      return new Response(JSON.stringify({
+        targetFile: ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
+        changedFiles: [
+          ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
+        ],
+        entries: [
+          {
+            id: "jsx-text:1:2",
+            kind: "jsx-text",
+            label: "Visible text",
+            currentValue: "Approve invoice",
+          },
+        ],
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const OrdersTable = createVariantProxy({
+      sourceId: "src/components/OrdersTable.tsx",
+      displayName: "Orders Table",
+      selected: "source",
+      variants: {
+        source: function OrdersSource() {
+          return <button>Approve order</button>;
+        },
+        compact: function OrdersCompact() {
+          return <button>Approve order</button>;
+        },
+      },
+    });
+
+    render(<OrdersTable />);
+    installVariantOverlay();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ".",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    await screen.findAllByText(/Agent: codex exec --json/i);
+    const controller = getVariantRuntimeController();
+    controller.actions.selectVariant("src/components/OrdersTable.tsx", "compact");
+    controller.actions.setToolMode("tweak");
+
+    const loadButton = await waitFor(() => {
+      const element = document.querySelector('[data-variant-tweaks-load="true"]') as HTMLButtonElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.click(loadButton);
+
+    await waitFor(() => {
+      expect(tweakCatalogRequests).toBe(1);
+      expect(document.querySelector('[data-variant-tweak-input="jsx-text:1:2"]')).not.toBeNull();
+    });
+
+    const tweakInput = document.querySelector('[data-variant-tweak-input="jsx-text:1:2"]') as HTMLInputElement | null;
+    expect(tweakInput).not.toBeNull();
+    fireEvent.input(tweakInput!, {
+      target: {
+        value: "Approve invoice",
+      },
+    });
+
+    const applyButton = document.querySelector('[data-variant-tweak-apply="jsx-text:1:2"]') as HTMLButtonElement | null;
+    expect(applyButton).not.toBeNull();
+    fireEvent.click(applyButton!);
+
+    await waitFor(() => {
+      expect(tweakApplyRequests).toBe(1);
+      expect(getVariantRuntimeState().tweaks.entries[0]?.currentValue).toBe("Approve invoice");
+    });
+
+    expect(getVariantRuntimeState().dockMode).toBe("tweak");
+    expect(getVariantRuntimeState().reviewResults).toEqual([
+      expect.objectContaining({
+        sourceId: "src/components/OrdersTable.tsx",
+        variantNames: ["compact"],
+      }),
+    ]);
+  });
+
   it("captures the full descendant bounds for a multi-node display-contents boundary", async () => {
     let runPayload: Record<string, unknown> | null = null;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -2103,6 +2239,127 @@ describe("variant plugin", () => {
     expect(fs.existsSync(path.join(tempRoot, "created-by-agent.txt"))).toBe(true);
     expect(runResponse.body).toContain("created-by-agent.txt");
     expect(fs.readFileSync(path.join(tempRoot, ".variiant", ".gitignore"), "utf8")).toBe("sessions/\n");
+  });
+
+  it("analyzes and applies deterministic copy tweaks through the plugin middleware", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "variant-plugin-tweaks-"));
+    const sourceDir = path.join(tempRoot, "src", "components");
+    const variantDir = path.join(
+      tempRoot,
+      ".variiant",
+      "variants",
+      "src",
+      "components",
+      "OrdersTable.tsx",
+      "default",
+    );
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(variantDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sourceDir, "OrdersTable.tsx"),
+      "export default function OrdersTable(){ return null; }\n",
+    );
+    fs.writeFileSync(
+      path.join(variantDir, "compact.tsx"),
+      [
+        'export default function CompactOrdersTable() {',
+        '  return <button aria-label="Approve">Approve order</button>;',
+        '}',
+        "",
+      ].join("\n"),
+    );
+    fs.writeFileSync(
+      path.join(tempRoot, "variiant.config.json"),
+      JSON.stringify({
+        agent: {
+          command: ["node", "-e", "process.stdout.write('noop')"],
+          streaming: "text",
+        },
+      }, null, 2),
+    );
+
+    let middleware:
+      | ((req: unknown, res: unknown, next: () => void) => void)
+      | undefined;
+    const fakeModule = { id: "virtual-orders-table" };
+    const reloadModule = vi.fn(async () => {});
+
+    const plugin = variantPlugin({ projectRoot: tempRoot });
+    plugin.configResolved?.({
+      root: tempRoot,
+    } as never);
+    plugin.configureServer?.({
+      watcher: {
+        add: vi.fn(),
+        on: vi.fn(),
+      },
+      moduleGraph: {
+        getModuleById: vi.fn(() => fakeModule),
+      },
+      reloadModule,
+      ws: {
+        send: vi.fn(),
+      },
+      middlewares: {
+        use(handler: (req: unknown, res: unknown, next: () => void) => void) {
+          middleware = handler;
+        },
+      },
+    } as never);
+
+    expect(middleware).toBeDefined();
+
+    const configResponse = await invokeMiddleware(middleware!, {
+      method: "GET",
+      url: "/__variiant/config",
+    });
+    const configPayload = JSON.parse(configResponse.body) as { token: string };
+
+    const catalogResponse = await invokeMiddleware(middleware!, {
+      method: "POST",
+      url: "/__variiant/tweak/catalog",
+      headers: {
+        "x-variiant-token": configPayload.token,
+      },
+      body: JSON.stringify({
+        sourceId: "src/components/OrdersTable.tsx",
+        variantName: "compact",
+      }),
+    });
+
+    expect(catalogResponse.statusCode).toBe(200);
+    const catalogPayload = JSON.parse(catalogResponse.body) as {
+      entries: Array<{ id: string; currentValue: string }>;
+    };
+    expect(catalogPayload.entries).toEqual([
+      expect.objectContaining({
+        currentValue: "Approve",
+      }),
+      expect.objectContaining({
+        currentValue: "Approve order",
+      }),
+    ]);
+
+    const textEntry = catalogPayload.entries.find((entry) => entry.currentValue === "Approve order");
+    expect(textEntry).toBeDefined();
+
+    const applyResponse = await invokeMiddleware(middleware!, {
+      method: "POST",
+      url: "/__variiant/tweak/apply",
+      headers: {
+        "x-variiant-token": configPayload.token,
+      },
+      body: JSON.stringify({
+        sourceId: "src/components/OrdersTable.tsx",
+        variantName: "compact",
+        entryId: textEntry!.id,
+        nextValue: "Approve invoice",
+      }),
+    });
+
+    expect(applyResponse.statusCode).toBe(200);
+    expect(fs.readFileSync(path.join(variantDir, "compact.tsx"), "utf8")).toContain("Approve invoice");
+    expect(reloadModule).toHaveBeenCalledTimes(1);
   });
 
   it("reloads affected variant proxies instead of full-reloading the page after an agent-created variant file", async () => {
