@@ -35,9 +35,9 @@ export type RuntimeComponentRecord = VariantDefinition & {
 
 export type VariantSurface = "closed" | "overlay" | "canvas";
 
-export type VariantCanvasMode = "components" | "pages";
-
-export type VariantCanvasCaptureState = "idle" | "capturing" | "error";
+export type VariantCanvasMode = "components";
+export type VariantDockMode = "ideate" | "review" | "tweak";
+export type VariantToolMode = "none" | "inspect" | "comment" | "sketch" | "tweak";
 
 export type VariantCanvasCamera = {
   x: number;
@@ -60,9 +60,12 @@ export type VariantCanvasState = {
   mode: VariantCanvasMode;
   camera: VariantCanvasCamera;
   targetSourceId: string | null;
-  captureState: VariantCanvasCaptureState;
-  captureError: string | null;
-  captureRevision: number;
+};
+
+export type VariantReviewResult = {
+  sourceId: string;
+  changedFiles: string[];
+  variantNames: string[];
 };
 
 export type VariantAgentStreamingMode = "auto" | "text" | "none";
@@ -99,11 +102,14 @@ export type RuntimeState = {
   surface: VariantSurface;
   overlayOpen: boolean;
   canvasOpen: boolean;
+  dockMode: VariantDockMode;
+  toolMode: VariantToolMode;
   activeSourceId: string | null;
   components: RuntimeComponentRecord[];
   mountedInstances: MountedVariantInstance[];
   canvas: VariantCanvasState;
   agent: VariantAgentState;
+  reviewResults: VariantReviewResult[];
 };
 
 export type VariantRuntimeSnapshot = RuntimeState & {
@@ -134,16 +140,13 @@ export type VariantRuntimeController = {
     toggleCanvas: () => void;
     closeCanvas: () => void;
     closeSurface: () => void;
+    setDockMode: (mode: VariantDockMode) => void;
+    setToolMode: (mode: VariantToolMode) => void;
     setCanvasMode: (mode: VariantCanvasMode) => void;
     setCanvasTarget: (sourceId: string | null) => void;
     setCanvasCamera: (camera: VariantCanvasCamera) => void;
     panCanvas: (deltaX: number, deltaY: number) => void;
     resetCanvasCamera: () => void;
-    setCanvasCaptureState: (
-      captureState: VariantCanvasCaptureState,
-      options?: { error?: string | null },
-    ) => void;
-    bumpCanvasCaptureRevision: () => void;
     nextComponent: () => void;
     previousComponent: () => void;
     nextVariant: () => void;
@@ -193,6 +196,79 @@ const defaultAgentAvailability: VariantAgentAvailability = {
   streaming: null,
   supportsImages: false,
 };
+
+function parseVariantReviewSourceId(changedFile: string): {
+  sourceId: string;
+  variantName: string;
+} | null {
+  const normalized = changedFile.replaceAll("\\", "/");
+  const marker = ".variiant/variants/";
+  const markerIndex = normalized.indexOf(marker);
+  if (markerIndex === -1) {
+    return null;
+  }
+
+  const relativePath = normalized.slice(markerIndex + marker.length);
+  const segments = relativePath.split("/").filter(Boolean);
+  const sourceSegmentIndex = segments.findIndex((segment) =>
+    [".tsx", ".ts", ".jsx", ".js", ".mts", ".mjs", ".cts", ".cjs"].some((extension) => segment.endsWith(extension))
+  );
+  if (sourceSegmentIndex === -1) {
+    return null;
+  }
+
+  const sourceRelativePath = segments.slice(0, sourceSegmentIndex + 1).join("/");
+  const exportName = segments[sourceSegmentIndex + 1];
+  const variantFileName = segments[sourceSegmentIndex + 2];
+  if (!exportName || !variantFileName) {
+    return null;
+  }
+
+  const extensionIndex = variantFileName.lastIndexOf(".");
+  if (extensionIndex <= 0) {
+    return null;
+  }
+
+  const variantName = variantFileName.slice(0, extensionIndex);
+  if (!variantName) {
+    return null;
+  }
+
+  return {
+    sourceId: exportName === "default" ? sourceRelativePath : `${sourceRelativePath}#${exportName}`,
+    variantName,
+  };
+}
+
+function inferReviewResults(changedFiles: string[]): VariantReviewResult[] {
+  const grouped = new Map<string, VariantReviewResult>();
+
+  for (const changedFile of changedFiles) {
+    const parsed = parseVariantReviewSourceId(changedFile);
+    if (!parsed) {
+      continue;
+    }
+
+    const existing = grouped.get(parsed.sourceId);
+    if (existing) {
+      if (!existing.changedFiles.includes(changedFile)) {
+        existing.changedFiles.push(changedFile);
+      }
+      if (!existing.variantNames.includes(parsed.variantName)) {
+        existing.variantNames.push(parsed.variantName);
+      }
+      continue;
+    }
+
+    grouped.set(parsed.sourceId, {
+      sourceId: parsed.sourceId,
+      changedFiles: [changedFile],
+      variantNames: [parsed.variantName],
+    });
+  }
+
+  return Array.from(grouped.values()).sort((left, right) => left.sourceId.localeCompare(right.sourceId));
+}
 
 function rotate<T>(items: T[], currentIndex: number, direction: Direction): T | null {
   if (items.length === 0) {
@@ -272,6 +348,8 @@ export function createVariantRuntimeController(options: {
     surface: "closed",
     overlayOpen: false,
     canvasOpen: false,
+    dockMode: "ideate",
+    toolMode: "none",
     activeSourceId: null,
     components: [],
     mountedInstances: [],
@@ -283,9 +361,6 @@ export function createVariantRuntimeController(options: {
         zoom: 1,
       },
       targetSourceId: null,
-      captureState: "idle",
-      captureError: null,
-      captureRevision: 0,
     },
     agent: {
       availability: defaultAgentAvailability,
@@ -298,6 +373,7 @@ export function createVariantRuntimeController(options: {
       changedFiles: [],
       error: null,
     },
+    reviewResults: [],
     selections: storage?.readSelections() ?? {},
     temporarySelections: null,
     shortcutConfig: {
@@ -337,11 +413,14 @@ export function createVariantRuntimeController(options: {
       surface: state.surface,
       overlayOpen: state.overlayOpen,
       canvasOpen: state.canvasOpen,
+      dockMode: state.dockMode,
+      toolMode: state.toolMode,
       activeSourceId: state.activeSourceId,
       components: state.components,
       mountedInstances: state.mountedInstances,
       canvas: state.canvas,
       agent: state.agent,
+      reviewResults: state.reviewResults,
       selections: state.selections,
       temporarySelections: state.temporarySelections,
       effectiveSelections,
@@ -458,10 +537,14 @@ export function createVariantRuntimeController(options: {
       },
       openCanvas() {
         state.surface = "canvas";
+        state.dockMode = "review";
         emit();
       },
       toggleCanvas() {
         state.surface = state.surface === "canvas" ? "closed" : "canvas";
+        if (state.surface === "canvas") {
+          state.dockMode = "review";
+        }
         emit();
       },
       closeCanvas() {
@@ -478,6 +561,33 @@ export function createVariantRuntimeController(options: {
         }
 
         state.surface = "closed";
+        if (state.toolMode === "sketch") {
+          state.toolMode = "none";
+        }
+        emit();
+      },
+      setDockMode(mode) {
+        if (state.dockMode === mode) {
+          return;
+        }
+
+        state.dockMode = mode;
+        if (mode !== "tweak" && state.toolMode === "tweak") {
+          state.toolMode = "none";
+        }
+        emit();
+      },
+      setToolMode(mode) {
+        if (state.toolMode === mode) {
+          return;
+        }
+
+        state.toolMode = mode;
+        if (mode === "tweak") {
+          state.dockMode = "tweak";
+        } else if (state.dockMode === "tweak") {
+          state.dockMode = "ideate";
+        }
         emit();
       },
       setCanvasMode(mode) {
@@ -488,8 +598,6 @@ export function createVariantRuntimeController(options: {
         state.canvas = {
           ...state.canvas,
           mode,
-          captureError: null,
-          captureRevision: state.canvas.captureRevision + 1,
         };
         emit();
       },
@@ -497,8 +605,6 @@ export function createVariantRuntimeController(options: {
         state.canvas = {
           ...state.canvas,
           targetSourceId: sourceId,
-          captureError: null,
-          captureRevision: state.canvas.captureRevision + 1,
         };
         state.activeSourceId = sourceId;
         emit();
@@ -529,21 +635,6 @@ export function createVariantRuntimeController(options: {
             y: 0,
             zoom: 1,
           },
-        };
-        emit();
-      },
-      setCanvasCaptureState(captureState, options = {}) {
-        state.canvas = {
-          ...state.canvas,
-          captureState,
-          captureError: options.error ?? null,
-        };
-        emit();
-      },
-      bumpCanvasCaptureRevision() {
-        state.canvas = {
-          ...state.canvas,
-          captureRevision: state.canvas.captureRevision + 1,
         };
         emit();
       },
@@ -677,6 +768,7 @@ export function createVariantRuntimeController(options: {
         emit();
       },
       startAgentRun() {
+        state.dockMode = "ideate";
         state.agent.status = "running";
         state.agent.logs = [];
         state.agent.sessionId = null;
@@ -733,11 +825,27 @@ export function createVariantRuntimeController(options: {
       },
       finishAgentRun(result = {}) {
         const exitCode = result.exitCode ?? 0;
+        const reviewResults = inferReviewResults(result.changedFiles ?? []);
         state.agent.status = result.error || exitCode !== 0 ? "error" : "success";
         state.agent.sessionId = result.sessionId ?? state.agent.sessionId;
         state.agent.exitCode = result.exitCode ?? null;
         state.agent.changedFiles = result.changedFiles ?? [];
         state.agent.error = result.error ?? null;
+        if (reviewResults.length > 0) {
+          state.reviewResults = reviewResults;
+          state.dockMode = "review";
+          if (reviewResults.some((entry) => entry.sourceId === state.activeSourceId)) {
+            state.canvas = {
+              ...state.canvas,
+              targetSourceId: state.activeSourceId,
+            };
+          } else {
+            state.canvas = {
+              ...state.canvas,
+              targetSourceId: reviewResults[0]?.sourceId ?? state.canvas.targetSourceId,
+            };
+          }
+        }
         emit();
       },
       clearAgentRun() {
@@ -747,6 +855,7 @@ export function createVariantRuntimeController(options: {
         state.agent.exitCode = null;
         state.agent.changedFiles = [];
         state.agent.error = null;
+        state.dockMode = state.reviewResults.length > 0 ? "review" : "ideate";
         emit();
       },
     },

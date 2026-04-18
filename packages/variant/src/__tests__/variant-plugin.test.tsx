@@ -280,7 +280,7 @@ describe("variant runtime proxy", () => {
     expect(document.querySelector('[data-variant-canvas-group-source="src/components/NotMounted.tsx"]')).toBeNull();
   });
 
-  it("renders page mode as cloned DOM previews and restores the live selection afterwards", async () => {
+  it("switches the dock into review mode and renders review results after a successful run", async () => {
     const MatrixCard = createVariantProxy({
       sourceId: "src/components/MatrixCard.tsx",
       displayName: "Matrix Card",
@@ -295,12 +295,7 @@ describe("variant runtime proxy", () => {
       },
     });
 
-    render(
-      <main data-testid="dashboard-page">
-        <h1>Dashboard shell</h1>
-        <MatrixCard />
-      </main>,
-    );
+    render(<MatrixCard />);
     installVariantOverlay();
 
     window.dispatchEvent(
@@ -312,55 +307,27 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    const activeChoice = await waitFor(() => {
-      const selects = Array.from(
-        document.querySelectorAll('[data-variant-active-choice="true"]'),
-      ) as HTMLSelectElement[];
-      const matchingSelect = selects.find((select) =>
-        !select.disabled && Array.from(select.options).some((option) => option.value === "calm")
-      );
-      expect(matchingSelect).toBeDefined();
-      return matchingSelect!;
-    });
-
-    fireEvent.change(activeChoice, {
-      target: {
-        value: "calm",
-      },
-    });
-    await screen.findByText("Matrix calm");
-
     const controller = getVariantRuntimeController();
-    controller.actions.openCanvas();
-    controller.actions.setCanvasMode("pages");
-
-    const getLatestPagePreview = (variantName: string): HTMLElement | null => {
-      const previews = Array.from(
-        document.querySelectorAll(`[data-variant-page-preview="${variantName}"]`),
-      ) as HTMLElement[];
-      return previews.at(-1) ?? null;
-    };
+    controller.actions.finishAgentRun({
+      sessionId: "session-review-1",
+      exitCode: 0,
+      changedFiles: [".variiant/variants/src/components/MatrixCard.tsx/default/calm.tsx"],
+    });
 
     await waitFor(() => {
-      expect(getVariantRuntimeState().canvas.captureState).toBe("idle");
-      expect(getLatestPagePreview("source")).not.toBeNull();
-      expect(getLatestPagePreview("calm")).not.toBeNull();
-      expect(getLatestPagePreview("source")?.querySelector('[data-variant-page-preview-body="true"]')).not.toBeNull();
-      expect(getLatestPagePreview("calm")?.querySelector('[data-variant-page-preview-body="true"]')).not.toBeNull();
+      expect(getVariantRuntimeState().dockMode).toBe("review");
     });
 
-    expect(vi.mocked(toCanvas)).not.toHaveBeenCalled();
-    expect(getVariantRuntimeState().selections["src/components/MatrixCard.tsx"]).toBe("calm");
-    expect(screen.getAllByText("Matrix calm").length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-variant-review-result="src/components/MatrixCard.tsx"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("MatrixCard.tsx");
+    expect(document.body.textContent).toContain("calm");
 
-    const sourcePreview = getLatestPagePreview("source");
-    const calmPreview = getLatestPagePreview("calm");
-    expect(sourcePreview?.textContent).toContain("Dashboard shell");
-    expect(sourcePreview?.textContent).toContain("Matrix source");
-    expect(calmPreview?.textContent).toContain("Dashboard shell");
-    expect(calmPreview?.textContent).toContain("Matrix calm");
-    expect(calmPreview?.querySelector('[data-testid="dashboard-page"]')).not.toBeNull();
-    expect(document.querySelectorAll('img[alt="source page preview"], img[alt="calm page preview"]').length).toBe(0);
+    controller.actions.openCanvas();
+    await waitFor(() => {
+      expect(getVariantRuntimeState().canvasOpen).toBe(true);
+    });
+    expect(document.querySelector('[data-variiant-canvas-fullscreen="true"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("Review Stack");
   });
 
   it("uses inferred parent width for wide component groups in components mode", async () => {
@@ -730,8 +697,9 @@ describe("variant runtime proxy", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(document.querySelector('[data-variant-agent-progress="true"]')).toBeNull();
-      expect(document.querySelector('[data-variant-agent-prompt="true"]')).not.toBeNull();
-      expect(document.querySelector('[data-variant-agent-run="true"]')).not.toBeNull();
+      expect(document.querySelector('[data-variant-agent-prompt="true"]')).toBeNull();
+      expect(document.querySelector('[data-variant-agent-run="true"]')).toBeNull();
+      expect(document.querySelector('[data-variant-review-result]')).not.toBeNull();
     });
   });
 
@@ -2132,7 +2100,7 @@ describe("variant plugin", () => {
 
     expect(agentInput.imagePath).toMatch(/orders-table\.png$/);
     expect(agentInput.imageContents).toBe("screenshot");
-    expect(agentInput.stdin).toContain("Image attachments:");
+    expect(agentInput.stdin).toContain("## SCREENSHOTS");
 
     const sessionDirs = fs.readdirSync(path.join(tempRoot, ".variiant", "sessions"));
     expect(sessionDirs).toHaveLength(1);

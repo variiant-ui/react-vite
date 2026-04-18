@@ -62,6 +62,9 @@ describe("variant runtime controller", () => {
     });
     controller.actions.setAgentPrompt("Create a denser table variant.");
     controller.actions.setAgentAttachActiveComponentScreenshot(true);
+    controller.actions.setToolMode("comment");
+    expect(controller.getSnapshot().toolMode).toBe("comment");
+
     controller.actions.startAgentRun();
     controller.actions.appendAgentLog("stdout", "Planning changes");
     controller.actions.replaceLatestAgentLog("stdout", "Planning the final changes");
@@ -79,6 +82,16 @@ describe("variant runtime controller", () => {
     expect(controller.getSnapshot().agent.logs.at(-1)?.text).toBe("Planning the final changes");
     expect(controller.getSnapshot().agent.changedFiles).toEqual([
       ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
+    ]);
+    expect(controller.getSnapshot().dockMode).toBe("review");
+    expect(controller.getSnapshot().reviewResults).toEqual([
+      {
+        sourceId: "src/components/OrdersTable.tsx",
+        changedFiles: [
+          ".variiant/variants/src/components/OrdersTable.tsx/default/compact.tsx",
+        ],
+        variantNames: ["compact"],
+      },
     ]);
 
     expect(persistedSelections.at(-1)).toEqual({
@@ -118,10 +131,24 @@ describe("variant runtime controller", () => {
     expect(controller.getSnapshot().surface).toBe("canvas");
     expect(controller.getSnapshot().canvasOpen).toBe(true);
     expect(controller.getSnapshot().overlayOpen).toBe(false);
+    expect(controller.getSnapshot().dockMode).toBe("review");
+    expect(controller.getSnapshot().canvas.mode).toBe("components");
 
     controller.actions.closeSurface();
     expect(controller.getSnapshot().surface).toBe("closed");
     expect(controller.getSnapshot().canvasOpen).toBe(false);
+  });
+
+  it("switches dock modes and clears tweak tool state when leaving tweak mode", () => {
+    const controller = createVariantRuntimeController();
+
+    controller.actions.setToolMode("tweak");
+    expect(controller.getSnapshot().dockMode).toBe("tweak");
+    expect(controller.getSnapshot().toolMode).toBe("tweak");
+
+    controller.actions.setDockMode("review");
+    expect(controller.getSnapshot().dockMode).toBe("review");
+    expect(controller.getSnapshot().toolMode).toBe("none");
   });
 
   it("keeps temporary selections separate from persisted live selections", () => {

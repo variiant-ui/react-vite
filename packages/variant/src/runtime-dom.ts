@@ -17,11 +17,6 @@ const agentBridgeStates = new WeakMap<VariantRuntimeController, {
   loadingPromise: Promise<void> | null;
   token: string | null;
 }>();
-const pagePreviewStates = new WeakMap<VariantRuntimeController, {
-  activeRequestKey: string | null;
-  runningToken: number;
-  cache: Map<string, VariantPagePreview[]>;
-}>();
 const canvasDomStates = new WeakMap<VariantRuntimeController, VariantCanvasDomState>();
 
 type VariantAgentRequestAttachment = {
@@ -50,26 +45,16 @@ type VariantAgentRequestTarget = {
   stabilityRiskReason: string | null;
 };
 
-type VariantPagePreview = {
-  variantName: string;
-  nodes: HTMLElement[];
-  width: number;
-  height: number;
-};
-
 type VariantCanvasDomState = {
   root: HTMLDivElement;
   viewport: HTMLDivElement;
   stage: HTMLDivElement;
   content: HTMLDivElement;
   title: HTMLDivElement;
-  modeComponentsButton: HTMLButtonElement;
-  modePagesButton: HTMLButtonElement;
   sourceSelect: HTMLSelectElement;
   resetButton: HTMLButtonElement;
   closeButton: HTMLButtonElement;
   lastContentKey: string | null;
-  lastAttachedPagePreviewKey: string | null;
   drag: {
     active: boolean;
     pointerId: number | null;
@@ -1139,24 +1124,6 @@ function getRenderableComponentRect(
   };
 }
 
-function getPagePreviewState(controller: VariantRuntimeController): {
-  activeRequestKey: string | null;
-  runningToken: number;
-  cache: Map<string, VariantPagePreview[]>;
-} {
-  let existing = pagePreviewStates.get(controller);
-  if (!existing) {
-    existing = {
-      activeRequestKey: null,
-      runningToken: 0,
-      cache: new Map(),
-    };
-    pagePreviewStates.set(controller, existing);
-  }
-
-  return existing;
-}
-
 export function getVariantCanvasComponentSlot(
   sourceId: string,
   variantName: string,
@@ -1175,10 +1142,7 @@ function renderCanvas(
   snapshot: VariantRuntimeSnapshot,
   controller: VariantRuntimeController,
 ): void {
-  const previewState = getPagePreviewState(controller);
   if (snapshot.surface !== "canvas") {
-    previewState.runningToken += 1;
-    previewState.activeRequestKey = null;
     container.innerHTML = "";
     canvasDomStates.delete(controller);
     return;
@@ -1187,21 +1151,13 @@ function renderCanvas(
   const dom = getOrCreateCanvasDomState(container, controller);
   const mounted = snapshot.components.filter((component) => component.mountedCount > 0);
   const targetSourceId = snapshot.canvas.targetSourceId ?? snapshot.activeSourceId ?? mounted[0]?.sourceId ?? "";
-  const targetComponent = mounted.find((component) => component.sourceId === targetSourceId) ?? null;
 
   dom.root.style.display = "flex";
   dom.root.setAttribute("data-variiant-canvas-fullscreen", "true");
   dom.root.style.setProperty("--variiant-canvas-zoom", String(snapshot.canvas.camera.zoom));
   dom.root.style.backgroundPosition = `${snapshot.canvas.camera.x}px ${snapshot.canvas.camera.y}px`;
   dom.root.style.backgroundSize = `${Math.max(8, Math.round(24 * snapshot.canvas.camera.zoom))}px ${Math.max(8, Math.round(24 * snapshot.canvas.camera.zoom))}px`;
-  dom.title.textContent = snapshot.canvas.mode === "components"
-    ? "Canvas Comparison"
-    : "Page Comparison";
-
-  dom.modeComponentsButton.dataset.active = String(snapshot.canvas.mode === "components");
-  dom.modePagesButton.dataset.active = String(snapshot.canvas.mode === "pages");
-  applyCanvasModeButtonStyle(dom.modeComponentsButton, snapshot.canvas.mode === "components");
-  applyCanvasModeButtonStyle(dom.modePagesButton, snapshot.canvas.mode === "pages");
+  dom.title.textContent = "Review Stack";
 
   dom.sourceSelect.innerHTML = mounted.length > 0
     ? mounted.map((component) => {
@@ -1213,34 +1169,12 @@ function renderCanvas(
 
   dom.stage.style.transform = `translate(${snapshot.canvas.camera.x}px, ${snapshot.canvas.camera.y}px) scale(${snapshot.canvas.camera.zoom})`;
 
-  const contentKey = snapshot.canvas.mode === "components"
-    ? buildComponentsContentKey(snapshot, mounted)
-    : buildPagesContentKey(snapshot, targetComponent);
+  const contentKey = buildComponentsContentKey(snapshot, mounted);
   const contentChanged = dom.lastContentKey !== contentKey;
 
   if (contentChanged) {
-    if (snapshot.canvas.mode === "components") {
-      dom.content.innerHTML = buildComponentsCanvasMarkup(snapshot, mounted);
-    } else {
-      const requestKey = buildPagePreviewRequestKey(snapshot, targetComponent);
-      const previews = requestKey ? getPagePreviewState(controller).cache.get(requestKey) ?? [] : [];
-      dom.content.innerHTML = buildPagesCanvasMarkup(snapshot, targetComponent, previews);
-    }
+    dom.content.innerHTML = buildComponentsCanvasMarkup(snapshot, mounted);
     dom.lastContentKey = contentKey;
-  }
-
-  if (snapshot.canvas.mode === "pages") {
-    const requestKey = buildPagePreviewRequestKey(snapshot, targetComponent);
-    const previews = requestKey ? getPagePreviewState(controller).cache.get(requestKey) ?? [] : [];
-    if (contentChanged || dom.lastAttachedPagePreviewKey !== requestKey) {
-      attachPagePreviewBodies(dom.content, previews);
-      dom.lastAttachedPagePreviewKey = requestKey;
-    }
-    void ensurePageModePreviewCache(controller);
-  } else {
-    previewState.runningToken += 1;
-    previewState.activeRequestKey = null;
-    dom.lastAttachedPagePreviewKey = null;
   }
 }
 
@@ -1262,20 +1196,6 @@ function getOrCreateCanvasDomState(
 
   const title = document.createElement("div");
   title.style.cssText = canvasTitleStyle();
-
-  const tabs = document.createElement("div");
-  tabs.style.cssText = canvasTabsStyle();
-
-  const modeComponentsButton = document.createElement("button");
-  modeComponentsButton.type = "button";
-  modeComponentsButton.textContent = "Components";
-
-  const modePagesButton = document.createElement("button");
-  modePagesButton.type = "button";
-  modePagesButton.textContent = "Pages";
-
-  tabs.appendChild(modeComponentsButton);
-  tabs.appendChild(modePagesButton);
 
   const actions = document.createElement("div");
   actions.style.cssText = canvasActionsStyle();
@@ -1299,7 +1219,6 @@ function getOrCreateCanvasDomState(
   actions.appendChild(closeButton);
 
   chrome.appendChild(title);
-  chrome.appendChild(tabs);
   chrome.appendChild(actions);
 
   const viewport = document.createElement("div");
@@ -1325,13 +1244,10 @@ function getOrCreateCanvasDomState(
     stage,
     content,
     title,
-    modeComponentsButton,
-    modePagesButton,
     sourceSelect,
     resetButton,
     closeButton,
     lastContentKey: null,
-    lastAttachedPagePreviewKey: null,
     drag: {
       active: false,
       pointerId: null,
@@ -1340,12 +1256,6 @@ function getOrCreateCanvasDomState(
     },
   };
 
-  modeComponentsButton.addEventListener("click", () => {
-    controller.actions.setCanvasMode("components");
-  });
-  modePagesButton.addEventListener("click", () => {
-    controller.actions.setCanvasMode("pages");
-  });
   sourceSelect.addEventListener("change", (event) => {
     const target = event.currentTarget as HTMLSelectElement;
     controller.actions.setCanvasTarget(target.value || null);
@@ -1454,19 +1364,6 @@ function buildComponentsContentKey(
   });
 }
 
-function buildPagesContentKey(
-  snapshot: VariantRuntimeSnapshot,
-  targetComponent: VariantRuntimeSnapshot["components"][number] | null,
-): string {
-  return JSON.stringify({
-    mode: snapshot.canvas.mode,
-    targetSourceId: targetComponent?.sourceId ?? null,
-    variantNames: targetComponent?.variantNames ?? [],
-    captureState: snapshot.canvas.captureState,
-    captureError: snapshot.canvas.captureError,
-  });
-}
-
 function buildComponentsCanvasMarkup(
   snapshot: VariantRuntimeSnapshot,
   mounted: VariantRuntimeSnapshot["components"],
@@ -1499,158 +1396,6 @@ function buildComponentsCanvasMarkup(
       </section>
     `;
   }).join("")}</div>`;
-}
-
-function buildPagesCanvasMarkup(
-  snapshot: VariantRuntimeSnapshot,
-  targetComponent: VariantRuntimeSnapshot["components"][number] | null,
-  previews: VariantPagePreview[],
-): string {
-  if (!targetComponent) {
-    return `<div style="${canvasEmptyStateStyle()}">Select a mounted component to compare full-page variants.</div>`;
-  }
-
-  const previewMap = new Map(previews.map((preview) => [preview.variantName, preview]));
-  return `<div style="${canvasPagesRowStyle()}">${targetComponent.variantNames.map((variantName) => {
-    const preview = previewMap.get(variantName);
-    const pageMarkup = preview
-      ? `<div
-          data-variant-page-preview-body-slot="${escapeHtml(variantName)}"
-          data-variant-page-preview-content="true"
-          style="${canvasPageContentStyle(preview.width, preview.height)}"
-        ></div>`
-      : `<div style="${canvasPagePlaceholderStyle()}">${snapshot.canvas.captureState === "error" ? "Capture failed" : "Capturing preview..."}</div>`;
-    return `
-      <section data-variant-page-preview="${escapeHtml(variantName)}" style="${canvasPageTileStyle()}">
-        <div style="${canvasGroupLabelStyle()}">${escapeHtml(formatCanvasGroupLabel(targetComponent.sourceId))}</div>
-        <div style="${canvasVariantTileHeaderStyle()}">${escapeHtml(variantName)}</div>
-        <div style="${canvasPageFrameStyle()}">${pageMarkup}</div>
-      </section>
-    `;
-  }).join("")}</div>${snapshot.canvas.captureError ? `<div style="${errorNoteStyle()}">${escapeHtml(snapshot.canvas.captureError)}</div>` : ""}`;
-}
-
-function attachPagePreviewBodies(
-  container: HTMLDivElement,
-  previews: VariantPagePreview[],
-): void {
-  for (const preview of previews) {
-    const slot = container.querySelector<HTMLDivElement>(
-      `[data-variant-page-preview-body-slot="${escapeAttributeValue(preview.variantName)}"]`,
-    );
-    if (!slot) {
-      continue;
-    }
-
-    slot.replaceChildren();
-    const body = document.createElement("div");
-    body.setAttribute("data-variant-page-preview-body", "true");
-    body.style.cssText = canvasPagePreviewBodyStyle(preview.width, preview.height);
-    body.append(...preview.nodes.map((node) => node.cloneNode(true)));
-    slot.appendChild(body);
-  }
-}
-
-function buildPagePreviewRequestKey(
-  snapshot: VariantRuntimeSnapshot,
-  targetComponent: VariantRuntimeSnapshot["components"][number] | null,
-): string | null {
-  if (!targetComponent) {
-    return null;
-  }
-
-  return JSON.stringify({
-    url: window.location.href,
-    title: document.title,
-    targetSourceId: targetComponent.sourceId,
-    variantNames: targetComponent.variantNames,
-    revision: snapshot.canvas.captureRevision,
-  });
-}
-
-async function ensurePageModePreviewCache(controller: VariantRuntimeController): Promise<void> {
-  const snapshot = controller.getSnapshot();
-  if (snapshot.surface !== "canvas" || snapshot.canvas.mode !== "pages") {
-    return;
-  }
-
-  const mounted = snapshot.components.filter((component) => component.mountedCount > 0);
-  const targetComponent = mounted.find(
-    (component) => component.sourceId === (snapshot.canvas.targetSourceId ?? snapshot.activeSourceId),
-  ) ?? null;
-  const requestKey = buildPagePreviewRequestKey(snapshot, targetComponent);
-  if (!requestKey || !targetComponent) {
-    return;
-  }
-
-  const previewState = getPagePreviewState(controller);
-  if (previewState.cache.has(requestKey)) {
-    return;
-  }
-
-  if (previewState.activeRequestKey === requestKey) {
-    return;
-  }
-
-  previewState.activeRequestKey = requestKey;
-  previewState.runningToken += 1;
-  const token = previewState.runningToken;
-  const previousTemporarySelections = snapshot.temporarySelections;
-
-  controller.actions.setCanvasCaptureState("capturing");
-  try {
-    const previews: VariantPagePreview[] = [];
-    for (const variantName of targetComponent.variantNames) {
-      if (previewState.runningToken !== token) {
-        return;
-      }
-
-      controller.actions.setTemporarySelections({
-        [targetComponent.sourceId]: variantName,
-      });
-      await waitForPaint();
-      const preview = await capturePagePreview(variantName);
-      previews.push(preview);
-    }
-
-    previewState.cache.set(requestKey, previews);
-    if (previewState.runningToken === token) {
-      controller.actions.setCanvasCaptureState("idle");
-    }
-  } catch (error) {
-    if (previewState.runningToken === token) {
-      controller.actions.setCanvasCaptureState("error", {
-        error: error instanceof Error ? error.message : "Failed to capture page previews.",
-      });
-    }
-  } finally {
-    previewState.activeRequestKey = null;
-    controller.actions.setTemporarySelections(previousTemporarySelections);
-  }
-}
-
-async function waitForPaint(): Promise<void> {
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-}
-
-async function capturePagePreview(variantName: string): Promise<VariantPagePreview> {
-  const previewWidth = getDocumentCaptureWidth();
-  const previewHeight = getDocumentCaptureHeight();
-  const nodes = Array.from(document.body.children)
-    .filter((child): child is HTMLElement => child instanceof HTMLElement)
-    .filter((child) => child.dataset.variantOverlayRoot !== "true" && child.dataset.variiantCanvasFullscreen !== "true")
-    .map((child) => child.cloneNode(true) as HTMLElement);
-
-  return {
-    variantName,
-    nodes,
-    width: previewWidth,
-    height: previewHeight,
-  };
-}
-
-function applyCanvasModeButtonStyle(button: HTMLButtonElement, active: boolean): void {
-  button.style.cssText = active ? canvasModeButtonActiveStyle() : canvasModeButtonStyle();
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -1766,10 +1511,39 @@ function renderOverlay(
   const errorSummaryMarkup = errorSummary
     ? `<div data-variant-agent-error="true" style="${errorNoteStyle()}">${escapeHtml(errorSummary)}</div>`
     : "";
+  const toolSummary = snapshot.toolMode === "none"
+    ? "No tool active."
+    : snapshot.toolMode === "inspect"
+      ? "Inspect mode is active. Boundary targeting will drive future context features."
+      : snapshot.toolMode === "comment"
+        ? "Comment mode is active. Contextual comment placement is the next implementation slice."
+        : snapshot.toolMode === "sketch"
+          ? "Sketch mode is active. Full drawing support is the next implementation slice."
+          : "Tweak mode is active. Deterministic edits land in the next commit.";
+  const reviewResultsMarkup = snapshot.reviewResults.length > 0
+    ? `<div style="${stackStyle()}">${snapshot.reviewResults.map((result) => `
+      <div data-variant-review-result="${escapeHtml(result.sourceId)}" style="${reviewCardStyle()}">
+        <div style="${reviewResultTitleStyle()}">${escapeHtml(formatCanvasGroupLabel(result.sourceId))}</div>
+        <div style="${metaTextStyle()}">Variants: ${escapeHtml(result.variantNames.join(", "))}</div>
+        <div style="${hintTextStyle()}">${escapeHtml(result.changedFiles.slice(0, 2).join(", "))}${result.changedFiles.length > 2 ? "..." : ""}</div>
+      </div>
+    `).join("")}</div>`
+    : `<div style="${hintTextStyle()}">No generated results yet. Run the agent from Ideate mode to populate review targets.</div>`;
 
   container.innerHTML = `
 <div style="${hudShellStyle()}">
   <div style="${panelStyle()}">
+    <div style="${metaRowStyle()}">
+      <div style="${segmentedRowStyle()}">
+        ${(["ideate", "review", "tweak"] as const).map((mode) => `
+          <button
+            data-variant-dock-mode="${mode}"
+            style="${segmentedButtonStyle(snapshot.dockMode === mode)}"
+          >${escapeHtml(mode.charAt(0).toUpperCase() + mode.slice(1))}</button>
+        `).join("")}
+      </div>
+      <div data-variant-agent-status="true" style="${statusPillStyle(snapshot.agent.status)}">${escapeHtml(statusText)}</div>
+    </div>
     <div style="${rowStyle()}">
       <select data-variant-active-source="true" style="${selectStyle()}" ${mounted.length === 0 ? "disabled" : ""}>
         ${componentOptions || `<option value="">No mounted components</option>`}
@@ -1780,21 +1554,33 @@ function renderOverlay(
     </div>
     <div style="${metaRowStyle()}">
       <div style="${metaTextStyle()}">${escapeHtml(availabilityMessage)}</div>
-      <div data-variant-agent-status="true" style="${statusPillStyle(snapshot.agent.status)}">${escapeHtml(statusText)}</div>
-    </div>
-    ${runningProgressMarkup}
-    ${snapshot.agent.status === "running" ? "" : `
-    <textarea
-      data-variant-agent-prompt="true"
-      style="${textareaStyle()}"
-      placeholder="Ask the local agent to create or update a design variant..."
-    >${escapeHtml(snapshot.agent.prompt)}</textarea>
-    ${screenshotOptionMarkup}
-    <div style="${buttonRowStyle()}">
       <button
         data-variant-open-canvas="true"
         style="${buttonStyle("secondary")}"
-      >Open Canvas</button>
+      >Open Review Stack</button>
+    </div>
+    <div style="${rowStyle()}">
+      ${(["inspect", "comment", "sketch", "tweak"] as const).map((mode) => `
+        <button
+          data-variant-tool-mode="${mode}"
+          style="${toolButtonStyle(snapshot.toolMode === mode)}"
+        >${escapeHtml(mode.charAt(0).toUpperCase() + mode.slice(1))}</button>
+      `).join("")}
+      <button
+        data-variant-tool-mode="none"
+        style="${toolButtonStyle(snapshot.toolMode === "none")}"
+      >Clear Tool</button>
+    </div>
+    <div style="${hintTextStyle()}">${escapeHtml(toolSummary)}</div>
+    ${runningProgressMarkup}
+    ${snapshot.agent.status === "running" || snapshot.dockMode !== "ideate" ? "" : `
+    <textarea
+      data-variant-agent-prompt="true"
+      style="${textareaStyle()}"
+      placeholder="Describe the next variant direction for the active component..."
+    >${escapeHtml(snapshot.agent.prompt)}</textarea>
+    ${screenshotOptionMarkup}
+    <div style="${buttonRowStyle()}">
       <button
         data-variant-agent-run="true"
         style="${buttonStyle("primary")}"
@@ -1806,6 +1592,16 @@ function renderOverlay(
         ${snapshot.agent.status === "idle" ? "disabled" : ""}
       >Clear</button>
     </div>`}
+    ${snapshot.dockMode === "review" ? `
+    <div style="${sectionCardStyle()}">
+      <div style="${sectionLabelStyle()}">Review Results</div>
+      ${reviewResultsMarkup}
+    </div>` : ""}
+    ${snapshot.dockMode === "tweak" ? `
+    <div style="${sectionCardStyle()}">
+      <div style="${sectionLabelStyle()}">Deterministic Tweaks</div>
+      <div style="${hintTextStyle()}">Copy-only tweaks are the next implementation slice. This mode is now wired into the runtime state and shell.</div>
+    </div>` : ""}
     ${errorSummaryMarkup}
     ${changedFilesMarkup}
   </div>
@@ -1829,6 +1625,30 @@ function renderOverlay(
       }
 
       controller.actions.selectVariant(active.sourceId, target.value);
+    });
+
+  container
+    .querySelectorAll<HTMLButtonElement>('[data-variant-dock-mode]')
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.variantDockMode as typeof snapshot.dockMode | undefined;
+        if (!mode) {
+          return;
+        }
+        controller.actions.setDockMode(mode);
+      });
+    });
+
+  container
+    .querySelectorAll<HTMLButtonElement>('[data-variant-tool-mode]')
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.variantToolMode as typeof snapshot.toolMode | undefined;
+        if (!mode) {
+          return;
+        }
+        controller.actions.setToolMode(mode);
+      });
     });
 
   container
@@ -1974,11 +1794,12 @@ function escapeHtml(value: string): string {
 function hudShellStyle(): string {
   return [
     "position:fixed",
-    "top:16px",
-    "right:16px",
+    "left:50%",
+    "bottom:18px",
+    "transform:translateX(-50%)",
     `z-index:${variantOverlayZIndex}`,
     "pointer-events:none",
-    "width:min(460px,calc(100vw - 32px))",
+    "width:min(720px,calc(100vw - 32px))",
   ].join(";");
 }
 
@@ -1986,12 +1807,13 @@ function panelStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:8px",
+    "gap:10px",
     "width:100%",
-    "background:rgba(255,255,255,0.98)",
-    "border:1px solid rgba(148,163,184,0.35)",
-    "border-radius:16px",
-    "padding:10px",
+    "background:rgba(255,255,255,0.985)",
+    "border:1px solid rgba(148,163,184,0.28)",
+    "box-shadow:0 20px 60px rgba(15,23,42,0.16)",
+    "border-radius:22px",
+    "padding:12px",
     "pointer-events:auto",
     'font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
     "color:#0f172a",
@@ -2024,6 +1846,45 @@ function buttonRowStyle(): string {
   ].join(";");
 }
 
+function segmentedRowStyle(): string {
+  return [
+    "display:inline-flex",
+    "align-items:center",
+    "gap:6px",
+    "padding:4px",
+    "border-radius:999px",
+    "background:#f1f5f9",
+  ].join(";");
+}
+
+function segmentedButtonStyle(active: boolean): string {
+  return [
+    "height:32px",
+    "border:none",
+    "border-radius:999px",
+    "padding:0 12px",
+    active ? "background:#0f172a" : "background:transparent",
+    active ? "color:#f8fafc" : "color:#334155",
+    "font-size:12px",
+    "font-weight:700",
+    "cursor:pointer",
+  ].join(";");
+}
+
+function toolButtonStyle(active: boolean): string {
+  return [
+    "height:30px",
+    active ? "border:1px solid #0f172a" : "border:1px solid #cbd5e1",
+    "border-radius:999px",
+    "padding:0 10px",
+    active ? "background:#e2e8f0" : "background:#fff",
+    active ? "color:#0f172a" : "color:#475569",
+    "font-size:12px",
+    "font-weight:600",
+    "cursor:pointer",
+  ].join(";");
+}
+
 function checkboxRowStyle(disabled: boolean): string {
   return [
     "display:flex",
@@ -2052,6 +1913,57 @@ function hintTextStyle(): string {
     "font-size:11px",
     "line-height:1.4",
     "color:#64748b",
+  ].join(";");
+}
+
+function sectionCardStyle(): string {
+  return [
+    "display:flex",
+    "flex-direction:column",
+    "gap:8px",
+    "padding:10px 12px",
+    "border-radius:16px",
+    "background:#f8fafc",
+    "border:1px solid #e2e8f0",
+  ].join(";");
+}
+
+function sectionLabelStyle(): string {
+  return [
+    "font-size:12px",
+    "font-weight:700",
+    "letter-spacing:0.02em",
+    "text-transform:uppercase",
+    "color:#334155",
+  ].join(";");
+}
+
+function stackStyle(): string {
+  return [
+    "display:flex",
+    "flex-direction:column",
+    "gap:8px",
+  ].join(";");
+}
+
+function reviewCardStyle(): string {
+  return [
+    "display:flex",
+    "flex-direction:column",
+    "gap:4px",
+    "padding:10px",
+    "border-radius:14px",
+    "background:#fff",
+    "border:1px solid #dbe4ee",
+  ].join(";");
+}
+
+function reviewResultTitleStyle(): string {
+  return [
+    "font-size:13px",
+    "font-weight:700",
+    "line-height:1.4",
+    "color:#0f172a",
   ].join(";");
 }
 

@@ -1,5 +1,27 @@
 import "@testing-library/jest-dom/vitest";
+import { TextDecoder, TextEncoder } from "node:util";
 import { beforeEach, vi } from "vitest";
+
+Object.defineProperty(globalThis, "TextEncoder", {
+  configurable: true,
+  writable: true,
+  value: TextEncoder,
+});
+
+Object.defineProperty(globalThis, "TextDecoder", {
+  configurable: true,
+  writable: true,
+  value: TextDecoder,
+});
+
+const encodedBytes = new TextEncoder().encode("");
+if (!(encodedBytes instanceof Uint8Array)) {
+  Object.defineProperty(globalThis, "Uint8Array", {
+    configurable: true,
+    writable: true,
+    value: encodedBytes.constructor,
+  });
+}
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
