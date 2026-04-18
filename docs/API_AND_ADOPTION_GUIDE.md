@@ -129,6 +129,7 @@ That session model is important because it is also the natural seam for future:
 In development:
 
 - the plugin bootstraps the browser runtime and keybindings
+- when the package is linked from a local checkout, that bootstrap prefers the package source runtime so local proving does not depend on stale `dist` output
 - the plugin scans `.variiant/variants/`
 - imports for variant-enabled source files are rewritten to virtual proxy modules
 - the proxy exposes the source component plus discovered exploratory variants

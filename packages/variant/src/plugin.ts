@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { Plugin } from "vite";
 import { buildAgentPrompt } from "./agent-prompt";
@@ -80,10 +81,24 @@ const developmentOverlayBootstrapVirtualId = "virtual:variiant/dev-bootstrap";
 const resolvedDevelopmentOverlayBootstrapVirtualId = `\0${developmentOverlayBootstrapVirtualId}`;
 const developmentOverlayBootstrapBrowserPath =
   `/@id/__x00__${developmentOverlayBootstrapVirtualId}`;
-const developmentOverlayBootstrapModule = [
-  `import { installVariantOverlay } from ${JSON.stringify("@variiant-ui/react-vite/runtime")};`,
-  "installVariantOverlay();",
-].join("\n");
+const variantPackageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const packagedRuntimeImportPath = "@variiant-ui/react-vite/runtime";
+
+export function resolveDevelopmentRuntimeImport(packageRoot = variantPackageRoot): string {
+  const runtimeSourcePath = path.join(packageRoot, "src", "runtime-api.ts");
+  if (fs.existsSync(runtimeSourcePath)) {
+    return toViteFsImportPath(runtimeSourcePath);
+  }
+
+  return packagedRuntimeImportPath;
+}
+
+function buildDevelopmentOverlayBootstrapModule(packageRoot = variantPackageRoot): string {
+  return [
+    `import { installVariantOverlay } from ${JSON.stringify(resolveDevelopmentRuntimeImport(packageRoot))};`,
+    "installVariantOverlay();",
+  ].join("\n");
+}
 
 export function variantPlugin(options: VariantPluginOptions = {}): Plugin {
   let projectRoot = "";
@@ -329,7 +344,7 @@ export function variantPlugin(options: VariantPluginOptions = {}): Plugin {
     },
     load(id) {
       if (id === resolvedDevelopmentOverlayBootstrapVirtualId) {
-        return developmentOverlayBootstrapModule;
+        return buildDevelopmentOverlayBootstrapModule();
       }
 
       if (!id.startsWith("\0variant-proxy:")) {
@@ -1632,6 +1647,10 @@ function toIdentifier(name: string): string {
 
 function normalizePath(value: string): string {
   return value.split(path.sep).join(path.posix.sep);
+}
+
+function toViteFsImportPath(absolutePath: string): string {
+  return `/@fs/${normalizePath(path.resolve(absolutePath))}`;
 }
 
 function toImportPath(value: string): string {

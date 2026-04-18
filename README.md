@@ -81,6 +81,15 @@ export default defineConfig({
 
 That is the whole app integration surface.
 
+## Local proving workflow
+
+When a consumer app links this repo locally, for example from `~/personal/shadcn-admin`, the dev bootstrap now prefers the package source runtime from `packages/variant/src/runtime-api.ts` when that file exists.
+
+That means:
+
+- runtime and overlay UI changes hot-reload in the proving app without rebuilding this package
+- plugin and bundler changes still require rebuilding `packages/variant` and restarting the consumer dev server
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |

@@ -39,6 +39,15 @@ export default defineConfig({
 });
 ```
 
+## Local proving workflow
+
+When this package is linked from a local checkout, the development bootstrap prefers the package source runtime when `src/runtime-api.ts` is available.
+
+That keeps the proving loop tighter:
+
+- runtime UI changes hot-reload without rebuilding the package
+- plugin-side changes still require a package rebuild and consumer-app restart
+
 ## Variant file convention
 
 ```text

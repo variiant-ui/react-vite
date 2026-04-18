@@ -168,6 +168,16 @@ New DOM responsibilities:
 
 The live page should remain interactive except while sketch mode is active.
 
+## Local proving support
+
+The dev bootstrap should prefer the package source runtime when the package is linked from a local checkout and `src/runtime-api.ts` is present.
+
+That keeps the proving workflow honest:
+
+- runtime and overlay changes propagate through the host app without a manual package rebuild
+- published installs still fall back to the packaged `dist` runtime entry
+- plugin-level changes still require rebuilding the package, because the consumer app is executing the built plugin
+
 ### Interaction rules
 
 - `Escape` closes the current tool or surface first

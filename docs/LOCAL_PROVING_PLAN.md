@@ -55,6 +55,19 @@ npm install --install-links /Users/darko/personal/variant/packages/variant
 npm exec variiant init
 ```
 
+Runtime proving now prefers the local package source runtime automatically when the linked checkout includes `packages/variant/src/runtime-api.ts`.
+
+That means:
+
+- runtime and overlay UI changes should appear in the host app without rebuilding `packages/variant`
+- plugin-side changes still require rebuilding `packages/variant` and restarting the host app dev server
+
+When the host app seems stale anyway, clear Vite's optimized dependency cache once:
+
+```bash
+rm -rf node_modules/.vite
+```
+
 ### 2. Add the plugin
 
 ```ts
