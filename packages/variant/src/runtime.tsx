@@ -13,7 +13,7 @@ import React, {
 import { createPortal } from "react-dom";
 
 export { getVariantRuntimeState, installVariantOverlay, setVariantShortcuts } from "./runtime-api";
-import { getVariantCanvasComponentSlot } from "./runtime-dom";
+import { getVariantCanvasComponentSlot } from "./dom/canvas";
 import { getVariantRuntimeController } from "./runtime-singleton";
 import type { ProxyDefinition } from "./runtime-react-types";
 

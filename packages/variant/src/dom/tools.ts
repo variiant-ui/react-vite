@@ -6,11 +6,11 @@ import type {
   VariantRuntimeController,
   VariantRuntimeSnapshot,
   VariantSketchAttachment,
-} from "./runtime-core";
+} from "../runtime-core";
 import {
   escapeAttributeValue,
   getRenderableComponentRect,
-} from "./runtime-dom-shared";
+} from "./shared";
 
 type VariantHoverTarget = {
   sourceId: string;

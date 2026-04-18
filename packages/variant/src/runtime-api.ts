@@ -1,5 +1,6 @@
 import type { RuntimeState, VariantShortcutConfig } from "./runtime-core";
-import { installVariantKeyboardBindings, installVariantOverlayUi } from "./runtime-dom";
+import { installVariantKeyboardBindings } from "./dom/keyboard";
+import { installVariantOverlayUi } from "./dom";
 import { getVariantRuntimeController } from "./runtime-singleton";
 
 export function installVariantOverlay(shortcuts?: Partial<VariantShortcutConfig>): void {

@@ -16,7 +16,7 @@ import {
   getVariantRuntimeState,
   installVariantOverlay,
 } from "../runtime";
-import { composeVariantSketchAttachment } from "../runtime-dom-tools";
+import { composeVariantSketchAttachment } from "../dom/tools";
 import { getVariantRuntimeController } from "../runtime-singleton";
 import {
   loadVariantAppConfig,
