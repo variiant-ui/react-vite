@@ -14,10 +14,11 @@
 
 The current package already includes a transient in-browser runtime and local agent bridge.
 
-The product direction is moving toward three explicit workflows:
+The product direction is moving toward clearer workflows:
 
-- `Ideate`: prompt on the live page with richer context, opened from an icon-first prompt tool in the dock
-- `Review`: clearer presentation of generated alternatives in the prompt tray and review stack
+- `Ideate`: prompt on the live page through a floating composer, with inline sketch and comment attachments
+- `Present`: switch between mounted components and variants from the same toolbar and surface generated results
+- `Review`: clearer presentation of generated alternatives in the present surface and review stack
 - `Tweak`: deterministic low-cost edits such as copy changes and later bounded utility tweaks
 
 ## Install

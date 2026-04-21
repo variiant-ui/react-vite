@@ -33,7 +33,7 @@ That remains the whole integration surface.
 
 Today the package ships:
 
-- a transient in-browser overlay with an icon-first dock that opens prompt, review, and tweak trays without turning into a persistent sidebar
+- a transient bottom-centered overlay toolbar with `Ideate` and `Present` tabs instead of a persistent sidebar
 - keyboard shortcuts for overlay/canvas toggling and variant navigation
 - a fullscreen comparison canvas
 - contextual comments and sketch attachments for ideation sessions, with comments carrying bounded DOM/tag text context and sketches composited over the visible viewport instead of sent as raw strokes
@@ -42,10 +42,11 @@ Today the package ships:
 
 ## Target runtime direction
 
-The product direction is now concretely organized around three workflows:
+The product direction is now concretely organized around clearer workflows:
 
-- `Ideate`: prompt + contextual comments + sketch attachment + component targeting
-- `Review`: clearer result presentation in the prompt tray and in a focused component comparison surface
+- `Ideate`: prompt + contextual comments + sketch attachment
+- `Present`: mounted component targeting + variant targeting + result presentation
+- `Review`: clearer result presentation in the present surface and in a focused component comparison surface
 - `Tweak`: deterministic post-generation edits such as copy changes and later bounded Tailwind/token adjustments
 
 This direction does not change the package installation or import model. It changes the browser workflow layered on top of the same runtime and plugin architecture.
@@ -217,8 +218,8 @@ This repo currently implements:
 
 The next architectural direction is:
 
-- transient bottom-centered dock instead of a generic floating utility surface
-- explicit ideation tool modes
+- transient bottom-centered `Ideate` / `Present` toolbar instead of a generic floating utility surface
+- explicit ideation tool modes plus a separate present surface for component and variant targeting
 - removal of page-mode comparison as the target direction
 - richer structured request payloads
 - deterministic tweak tooling beside the agent workflow

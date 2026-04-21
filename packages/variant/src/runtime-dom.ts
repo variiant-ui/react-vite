@@ -1,11 +1,8 @@
 import type { VariantRuntimeController, VariantRuntimeSnapshot } from "./runtime-core";
-import {
-  clearVariantToolSketch,
-  renderVariantToolLayer,
-} from "./runtime-dom-tools";
-import { renderCanvas } from "./runtime-dom-canvas";
-import { renderOverlay, variantOverlayZIndex } from "./runtime-dom-overlay";
-import { loadAgentBridgeConfig } from "./runtime-dom-agent";
+import { renderVariantToolLayer } from "./dom/tools";
+import { renderCanvas } from "./dom/canvas";
+import { renderOverlay, variantOverlayZIndex } from "./dom/overlay";
+import { loadAgentBridgeConfig } from "./dom/agent";
 
 const installedOverlayControllers = new WeakSet<VariantRuntimeController>();
 const overlayStyleTagId = "variiant-overlay-styles";
@@ -24,22 +21,6 @@ function ensureOverlayStyles(): void {
   const style = document.createElement("style");
   style.id = overlayStyleTagId;
   style.textContent = `
-@keyframes variiant-agent-gradient {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  100% {
-    background-position: 200% 50%;
-  }
-}
-
-@keyframes variiant-agent-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 ${variantOverlayPopoverSelector} {
   padding: 0;
   border: 0;
@@ -123,10 +104,7 @@ function installOverlayPromotionObserver(
   });
 }
 
-function syncOverlayMountParent(
-  container: HTMLDivElement,
-  snapshot: VariantRuntimeSnapshot,
-): void {
+function syncOverlayMountParent(container: HTMLDivElement, snapshot: VariantRuntimeSnapshot): void {
   const nextParent = getPreferredOverlayMountParent(container, snapshot);
   if (!nextParent || container.parentElement === nextParent) {
     return;

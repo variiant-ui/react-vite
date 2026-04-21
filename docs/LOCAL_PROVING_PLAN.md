@@ -20,6 +20,7 @@ We need evidence for these claims:
 - exploratory files can live fully under `.variiant/variants/`
 - the live page is enough for page-context exploration
 - the transient dock is a better entrypoint than a generic floating utility surface
+- the new `Ideate` / `Present` toolbar is clearer than the older icon-first dock
 - contextual comments improve prompt quality without making the runtime noisy
 - sketch mode feels intentional and not broken
 - generated variants are easier to review after a run
@@ -161,9 +162,10 @@ Validate:
 ### Ideate
 
 1. Open the dock.
-2. Enter a prompt for the active component.
-3. Submit a run and confirm the session is created under `.variiant/sessions/`.
-4. Confirm generated files land under the correct mirrored variant directory.
+2. Confirm `Ideate` is active and the composer is visible.
+3. Enter a prompt for the active component.
+4. Submit a run and confirm the session is created under `.variiant/sessions/`.
+5. Confirm generated files land under the correct mirrored variant directory.
 
 ### Comments
 

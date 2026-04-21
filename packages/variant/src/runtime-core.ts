@@ -605,6 +605,16 @@ export function createVariantRuntimeController(options: {
     emit();
   };
 
+  const expandOverlayDock = (): void => {
+    if (state.toolMode === "tweak") {
+      state.dockMode = "tweak";
+    } else if (state.dockMode !== "review") {
+      state.dockMode = "ideate";
+    }
+
+    state.dockExpanded = true;
+  };
+
   emit();
 
   return {
@@ -648,10 +658,14 @@ export function createVariantRuntimeController(options: {
     actions: {
       openOverlay() {
         state.surface = "overlay";
+        expandOverlayDock();
         emit();
       },
       toggleOverlay() {
         state.surface = state.surface === "overlay" ? "closed" : "overlay";
+        if (state.surface === "overlay") {
+          expandOverlayDock();
+        }
         emit();
       },
       closeOverlay() {

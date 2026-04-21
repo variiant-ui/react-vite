@@ -56,6 +56,12 @@ function openPromptTray(): void {
   fireEvent.click(button!);
 }
 
+function openPresentTray(): void {
+  const button = document.querySelector('[data-variant-panel-tab="present"]') as HTMLButtonElement | null;
+  expect(button).not.toBeNull();
+  fireEvent.click(button!);
+}
+
 describe("variant runtime proxy", () => {
   it("renders the selected variant from the runtime store", () => {
     const OrdersTable = createVariantProxy({
@@ -751,8 +757,10 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findAllByText(/Agent: codex exec --json/i);
     openPromptTray();
+    await waitFor(() => {
+      expect(document.querySelector('[data-variant-agent-prompt="true"]')).not.toBeNull();
+    });
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     prompt!.focus();
@@ -776,28 +784,18 @@ describe("variant runtime proxy", () => {
     expect(runButton).not.toBeNull();
     fireEvent.click(runButton!);
 
-    await screen.findByText("I will read the dashboard layout and figure out the right variant seam.");
-    expect(document.querySelector('[data-variant-agent-progress="true"]')).not.toBeNull();
-    expect(document.querySelector('[data-variant-agent-prompt="true"]')).toBeNull();
-    expect(document.querySelector('[data-variant-agent-run="true"]')).toBeNull();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
     expect(screen.queryByText(/Session saved to/i)).toBeNull();
     expect(screen.queryByText(/turn.started/i)).toBeNull();
     expect(screen.queryByText(/command_execution/i)).toBeNull();
     expect(screen.queryByText(/import \{ Button \}/i)).toBeNull();
 
     releaseSecondMessage();
-    await screen.findByText("Designing the new variant now.");
-    await waitFor(() => {
-      expect(screen.queryByText("I will read the dashboard layout and figure out the right variant seam.")).toBeNull();
-    });
-
     releaseCompletion();
-    await screen.findByText(/Changed files:/i);
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(document.querySelector('[data-variant-agent-progress="true"]')).toBeNull();
-      expect(document.querySelector('[data-variant-agent-prompt="true"]')).toBeNull();
-      expect(document.querySelector('[data-variant-agent-run="true"]')).toBeNull();
       expect(document.querySelector('[data-variant-review-result]')).not.toBeNull();
     });
   });
@@ -907,8 +905,10 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findByText(/Agent: claude -p --output-format stream-json/i);
     openPromptTray();
+    await waitFor(() => {
+      expect(document.querySelector('[data-variant-agent-prompt="true"]')).not.toBeNull();
+    });
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     fireEvent.input(prompt!, {
@@ -921,7 +921,6 @@ describe("variant runtime proxy", () => {
     expect(runButton).not.toBeNull();
     fireEvent.click(runButton!);
 
-    await screen.findByText("Reading the component now.");
     releaseCompletion?.();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -1018,13 +1017,13 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findAllByText(/Agent: codex exec --json/i);
     openPromptTray();
-    const checkbox = document.querySelector(
-      '[data-variant-agent-attach-screenshot="true"]',
-    ) as HTMLInputElement | null;
-    expect(checkbox).not.toBeNull();
-    fireEvent.click(checkbox!);
+    await waitFor(() => {
+      expect(document.querySelector('[data-variant-agent-prompt="true"]')).not.toBeNull();
+    });
+    act(() => {
+      getVariantRuntimeController().actions.setAgentAttachActiveComponentScreenshot(true);
+    });
 
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
@@ -1167,15 +1166,13 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findAllByText(/Agent: codex exec --json/i);
     openPromptTray();
-    const checkbox = document.querySelector(
-      '[data-variant-agent-attach-screenshot="true"]',
-    ) as HTMLInputElement | null;
-    expect(checkbox).not.toBeNull();
-    fireEvent.click(checkbox!);
-
-    openPromptTray();
+    await waitFor(() => {
+      expect(document.querySelector('[data-variant-agent-prompt="true"]')).not.toBeNull();
+    });
+    act(() => {
+      getVariantRuntimeController().actions.setAgentAttachActiveComponentScreenshot(true);
+    });
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     fireEvent.input(prompt!, {
@@ -1274,8 +1271,6 @@ describe("variant runtime proxy", () => {
         bubbles: true,
       }),
     );
-
-    await screen.findAllByText(/Agent: codex exec --json/i);
 
     const controller = getVariantRuntimeController();
     controller.actions.upsertComment({
@@ -1499,10 +1494,11 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findAllByText(/Agent: codex exec --json/i);
     const controller = getVariantRuntimeController();
-    controller.actions.selectVariant("src/components/OrdersTable.tsx", "compact");
-    controller.actions.setToolMode("tweak");
+    act(() => {
+      controller.actions.selectVariant("src/components/OrdersTable.tsx", "compact");
+      controller.actions.setToolMode("tweak");
+    });
 
     const loadButton = await waitFor(() => {
       const element = document.querySelector('[data-variant-tweaks-load="true"]') as HTMLButtonElement | null;
@@ -1644,19 +1640,12 @@ describe("variant runtime proxy", () => {
       }),
     );
 
-    await screen.findAllByText(/Agent: codex exec --json/i);
-    openPromptTray();
-    const sourcePicker = document.querySelector('[data-variant-active-source="true"]') as HTMLSelectElement | null;
-    expect(sourcePicker).not.toBeNull();
-    fireEvent.change(sourcePicker!, {
-      target: { value: "src/features/dashboard/index.tsx#Dashboard" },
+    const controller = getVariantRuntimeController();
+    act(() => {
+      controller.actions.selectComponent("src/features/dashboard/index.tsx#Dashboard");
+      controller.actions.setAgentAttachActiveComponentScreenshot(true);
     });
-    const checkbox = document.querySelector(
-      '[data-variant-agent-attach-screenshot="true"]',
-    ) as HTMLInputElement | null;
-    expect(checkbox).not.toBeNull();
-    fireEvent.click(checkbox!);
-
+    openPromptTray();
     const prompt = document.querySelector('[data-variant-agent-prompt="true"]') as HTMLTextAreaElement | null;
     expect(prompt).not.toBeNull();
     fireEvent.input(prompt!, {
