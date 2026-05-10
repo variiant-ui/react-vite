@@ -7,6 +7,7 @@ export const legacyVariantsDir = ".variants";
 export const variantSessionsDir = `${variantWorkspaceDirName}/sessions`;
 
 const sessionsIgnoreRule = "sessions/";
+const cacheIgnoreRule = "cache/";
 
 export function getWatchedVariantDirs(configuredVariantsDir?: string): string[] {
   if (configuredVariantsDir) {
@@ -38,19 +39,21 @@ export function ensureVariantWorkspaceGitignore(projectRoot: string): string {
   fs.mkdirSync(workspaceDir, { recursive: true });
 
   if (!fs.existsSync(gitignorePath)) {
-    fs.writeFileSync(gitignorePath, `${sessionsIgnoreRule}\n`);
+    fs.writeFileSync(gitignorePath, `${sessionsIgnoreRule}\n${cacheIgnoreRule}\n`);
     return gitignorePath;
   }
 
   const current = fs.readFileSync(gitignorePath, "utf8");
-  const hasRule = current.split(/\r?\n/).some((line) => line.trim() === sessionsIgnoreRule);
-  if (hasRule) {
+  const existingRules = new Set(current.split(/\r?\n/).map((line) => line.trim()));
+  const missingRules = [sessionsIgnoreRule, cacheIgnoreRule]
+    .filter((rule) => !existingRules.has(rule));
+  if (missingRules.length === 0) {
     return gitignorePath;
   }
 
   const suffix = current.length > 0 && !current.endsWith("\n")
-    ? `\n${sessionsIgnoreRule}\n`
-    : `${sessionsIgnoreRule}\n`;
+    ? `\n${missingRules.join("\n")}\n`
+    : `${missingRules.join("\n")}\n`;
   fs.writeFileSync(gitignorePath, `${current}${suffix}`);
   return gitignorePath;
 }

@@ -1,12 +1,12 @@
 # variiant-ui/react-vite
 
-`@variiant-ui/react-vite` lets a React + Vite app keep multiple implementations of the same component and switch between them live in development, while shipping only the selected implementation in production.
+`@variiant-ui/react-vite` lets a React app keep multiple implementations of the same component and switch between them live in development, while shipping only the selected implementation in production. Vite remains the primary adapter; Webpack 5 support is available from the same package.
 
 ## Core model
 
 - app imports stay unchanged
 - variant files live under `.variiant/variants/`
-- the Vite plugin rewrites matching imports to generated proxy modules
+- the bundler adapter rewrites matching imports to generated proxy modules
 - development can switch between source and exploratory variants
 - production includes only the chosen implementation
 
@@ -28,7 +28,7 @@ npm install @variiant-ui/react-vite
 npm exec variiant init
 ```
 
-## Vite setup
+## Vite Setup
 
 ```ts
 import { defineConfig } from "vite";
@@ -39,6 +39,30 @@ export default defineConfig({
   plugins: [variantPlugin(), react()],
 });
 ```
+
+## Webpack Setup
+
+```js
+import {
+  variantWebpackDevMiddleware,
+  variantWebpackPlugin,
+} from "@variiant-ui/react-vite";
+
+export default {
+  plugins: [variantWebpackPlugin()],
+  devServer: {
+    setupMiddlewares: (middlewares) => {
+      middlewares.unshift({
+        name: "variiant",
+        middleware: variantWebpackDevMiddleware(),
+      });
+      return middlewares;
+    },
+  },
+};
+```
+
+Webpack proxy modules are generated under `.variiant/cache/webpack/`.
 
 ## Local proving workflow
 

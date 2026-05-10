@@ -2383,7 +2383,7 @@ describe("variant plugin", () => {
     expect(runResponse.body).toContain('"type":"done"');
     expect(fs.existsSync(path.join(tempRoot, "created-by-agent.txt"))).toBe(true);
     expect(runResponse.body).toContain("created-by-agent.txt");
-    expect(fs.readFileSync(path.join(tempRoot, ".variiant", ".gitignore"), "utf8")).toBe("sessions/\n");
+    expect(fs.readFileSync(path.join(tempRoot, ".variiant", ".gitignore"), "utf8")).toBe("sessions/\ncache/\n");
   });
 
   it("analyzes and applies deterministic copy tweaks through the plugin middleware", async () => {

@@ -2,7 +2,7 @@
 
 ## Product story
 
-`@variiant-ui/react-vite` should feel almost invisible until a team wants to explore UI alternatives.
+`@variiant-ui/react-vite` should feel almost invisible until a team wants to explore UI alternatives. The package name is currently Vite-specific for compatibility, but the integration model is moving toward one React package with multiple bundler adapters.
 
 The adoption bar remains:
 
@@ -19,6 +19,8 @@ The runtime direction is evolving, but that adoption bar does not change.
 Current public API:
 
 - `variantPlugin()` for Vite
+- `variantWebpackPlugin()` for Webpack 5
+- `variantWebpackDevMiddleware()` for Webpack dev-server agent/tweak routes
 - `.variiant/variants/` as the canonical variant workspace
 - optional top-level `variiant.config.json` for the local agent bridge
 - optional `agent.refresh` config or `variantPlugin({ agentRefresh })` override
@@ -76,6 +78,28 @@ export default defineConfig({
 });
 ```
 
+### 2b. Or add the Webpack adapter
+
+```js
+import {
+  variantWebpackDevMiddleware,
+  variantWebpackPlugin,
+} from "@variiant-ui/react-vite";
+
+export default {
+  plugins: [variantWebpackPlugin()],
+  devServer: {
+    setupMiddlewares: (middlewares) => {
+      middlewares.unshift({
+        name: "variiant",
+        middleware: variantWebpackDevMiddleware(),
+      });
+      return middlewares;
+    },
+  },
+};
+```
+
 ### 3. Keep imports unchanged
 
 ```tsx
@@ -127,7 +151,7 @@ That session model is important because it is also the natural seam for future:
 
 ## How it works
 
-In development:
+In Vite development:
 
 - the plugin bootstraps the browser runtime and keybindings
 - when the package is linked from a local checkout, that bootstrap prefers the package source runtime so local proving does not depend on stale `dist` output
@@ -135,6 +159,13 @@ In development:
 - imports for variant-enabled source files are rewritten to virtual proxy modules
 - the proxy exposes the source component plus discovered exploratory variants
 - the runtime selects between them on the live page
+
+In Webpack development:
+
+- the adapter generates real proxy modules under `.variiant/cache/webpack/`
+- matching imports are redirected to those generated proxy files
+- a dev-server middleware exposes the same `/__variiant/*` browser bridge routes
+- the same runtime selects between source and exploratory variants on the live page
 
 In production:
 
@@ -207,6 +238,7 @@ The user makes cheap follow-up edits without another full prompt. Planned determ
 This repo currently implements:
 
 - Vite plugin integration
+- Webpack 5 adapter integration
 - development runtime overlay and keybindings
 - fullscreen comparison canvas
 - production-safe selected-variant builds
