@@ -5,7 +5,7 @@ export const variantOverlayZIndex = 2147483647;
 // Override these from DevTools or host-page CSS using
 // [data-variant-overlay-root] or [data-variant-toolbar-shell].
 // Example: --variiant-toolbar-width, --variiant-toolbar-bottom,
-// --variiant-toolbar-surface-radius, --variiant-toolbar-surface-shadow.
+// --variiant-toolbar-height, --variiant-toolbar-shadow.
 
 export function hudShellStyle(): string {
   return [
@@ -14,7 +14,7 @@ export function hudShellStyle(): string {
     "bottom:var(--variiant-toolbar-bottom,18px)",
     "transform:translateX(-50%)",
     `z-index:${variantOverlayZIndex}`,
-    "width:var(--variiant-toolbar-width,min(1120px,calc(100vw - 24px)))",
+    "width:var(--variiant-toolbar-width,min(980px,calc(100vw - 24px)))",
     "pointer-events:none",
     "font-family:Inter,'Avenir Next','Helvetica Neue',ui-sans-serif,system-ui,sans-serif",
     "color:#111827",
@@ -27,8 +27,7 @@ export function toolbarSceneStyle(visible: boolean): string {
     "display:flex",
     "align-items:flex-end",
     "justify-content:center",
-    "gap:var(--variiant-toolbar-gap,8px)",
-    "flex-wrap:wrap",
+    "gap:var(--variiant-toolbar-gap,0px)",
     "width:100%",
     visible ? "opacity:1" : "opacity:0",
     visible ? "transform:translateY(0)" : "transform:translateY(10px)",
@@ -36,30 +35,19 @@ export function toolbarSceneStyle(visible: boolean): string {
   ].join(";");
 }
 
-export function toolbarHaloStyle(): string {
-  return [
-    "position:absolute",
-    "left:50%",
-    "bottom:var(--variiant-toolbar-halo-bottom,-46px)",
-    "transform:translateX(-50%)",
-    "width:var(--variiant-toolbar-halo-width,min(980px,92vw))",
-    "height:var(--variiant-toolbar-halo-height,220px)",
-    "border-radius:999px",
-    "background:radial-gradient(ellipse 40% 50% at 50% 100%, rgba(0, 0, 0, 0.24) 28%, rgba(0, 0, 0, 0) 100%)",
-    "pointer-events:none",
-  ].join(";");
-}
-
 export function tabRailStyle(): string {
   return [
     "display:inline-flex",
     "align-items:center",
-    "gap:8px",
-    "padding:var(--variiant-toolbar-surface-padding,8px)",
+    "align-self:flex-end",
+    "min-height:var(--variiant-toolbar-height,52px)",
+    "padding:6px 8px",
     "background:#ffffff",
-    "border:var(--variiant-toolbar-surface-border,1px solid rgba(15,23,42,0.12))",
-    "border-radius:var(--variiant-toolbar-surface-radius,16px)",
-    "box-shadow:var(--variiant-toolbar-surface-shadow,0 12px 30px rgba(15,23,42,0.22))",
+    "border:1px solid rgba(0,0,0,0.10)",
+    "border-right:none",
+    "border-top-left-radius:12px",
+    "border-bottom-left-radius:12px",
+    "box-shadow:var(--variiant-toolbar-shadow,0 1px 1px rgba(0,0,0,0.08))",
     "pointer-events:auto",
     "flex-shrink:0",
   ].join(";");
@@ -70,24 +58,27 @@ export function tabButtonStyle(active: boolean): string {
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
-    "padding:4px 8px",
+    "min-height:32px",
+    "padding:0 12px",
     "border:none",
     "border-radius:6px",
-    active ? "background:#e8e8e8" : "background:transparent",
+    active ? "background:#ffffff" : "background:transparent",
+    active ? "box-shadow:0 0 0 1px rgba(0,0,0,0.06) inset" : "box-shadow:none",
+    active ? "opacity:1" : "opacity:0.72",
     "color:#111111",
-    "font-size:14px",
+    "font-size:13px",
     "font-weight:500",
     "letter-spacing:-0.01em",
     "cursor:pointer",
-    "transition:background 150ms ease, color 150ms ease",
+    "transition:background 150ms ease, opacity 150ms ease",
   ].join(";");
 }
 
 export function panelShellStyle(visible: boolean): string {
   return [
-    "flex:1 1 var(--variiant-toolbar-panel-min-width,550px)",
-    "min-width:min(var(--variiant-toolbar-panel-min-width,550px),100%)",
-    "max-width:100px",
+    "flex:1 1 var(--variiant-toolbar-panel-min-width,420px)",
+    "min-width:min(var(--variiant-toolbar-panel-min-width,420px),100%)",
+    "max-width:100%",
     "pointer-events:auto",
     visible ? "opacity:1" : "opacity:0",
     visible ? "transform:translateY(0)" : "transform:translateY(8px)",
@@ -99,12 +90,16 @@ export function panelFrameStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:12px",
-    "padding:var(--variiant-toolbar-surface-padding,10px)",
+    "justify-content:center",
+    "min-height:var(--variiant-toolbar-height,52px)",
+    "padding:8px",
     "background:#ffffff",
-    "border:var(--variiant-toolbar-surface-border,1px solid rgba(15,23,42,0.12))",
-    "border-radius:var(--variiant-toolbar-surface-radius,16px)",
-    "box-shadow:var(--variiant-toolbar-surface-shadow,0 12px 30px rgba(15,23,42,0.22))",
+    "border-top:1px solid rgba(0,0,0,0.10)",
+    "border-right:1px solid rgba(0,0,0,0.10)",
+    "border-bottom:1px solid rgba(0,0,0,0.10)",
+    "border-top-right-radius:12px",
+    "border-bottom-right-radius:12px",
+    "box-shadow:var(--variiant-toolbar-shadow,0 1px 1px rgba(0,0,0,0.08))",
     "overflow:hidden",
   ].join(";");
 }
@@ -112,19 +107,19 @@ export function panelFrameStyle(): string {
 export function composerRowStyle(): string {
   return [
     "display:flex",
-    "align-items:center",
-    "gap:14px",
+    "align-items:flex-end",
     "min-width:0",
   ].join(";");
 }
 
 export function promptToolRailStyle(): string {
   return [
-    "display:flex",
+    "display:inline-flex",
     "align-items:center",
-    "gap:6px",
-    "padding:2px 0 2px 4px",
-    "flex-shrink:0",
+    "gap:4px",
+    "padding:4px",
+    "background:rgba(4,4,4,0.06)",
+    "border-radius:6px",
   ].join(";");
 }
 
@@ -133,13 +128,15 @@ export function promptToolButtonStyle(active: boolean): string {
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
-    "width:24px",
-    "height:24px",
+    "width:32px",
+    "height:32px",
+    "padding:4px",
     "border:none",
-    "border-radius:999px",
-    active ? "background:rgba(243,244,246,0.96)" : "background:transparent",
+    "border-radius:6px",
+    active ? "background:#ffffff" : "background:transparent",
+    active ? "opacity:1" : "opacity:0.6",
     "cursor:pointer",
-    "transition:background 150ms ease, transform 150ms ease",
+    "transition:background 150ms ease, opacity 150ms ease",
   ].join(";");
 }
 
@@ -148,19 +145,10 @@ export function promptToolIconStyle(kind: ToolbarButtonKind, active: boolean): s
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
-    "width:36px",
-    "height:36px",
-    active ? "opacity:1" : "opacity:0.92",
-    kind === "sketch" ? "color:#b1251b" : "color:#2e24b4",
-  ].join(";");
-}
-
-export function verticalDividerStyle(): string {
-  return [
-    "width:1px",
-    "align-self:stretch",
-    "background:rgba(15,23,42,0.16)",
-    "flex-shrink:0",
+    "width:24px",
+    "height:24px",
+    active ? "opacity:1" : "opacity:0.6",
+    kind === "sketch" ? "color:#c00404" : "color:#111111",
   ].join(";");
 }
 
@@ -170,7 +158,7 @@ export function promptColumnStyle(): string {
     "min-width:0",
     "display:flex",
     "flex-direction:column",
-    "gap:10px",
+    "gap:6px",
   ].join(";");
 }
 
@@ -178,25 +166,36 @@ export function promptInputSurfaceStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:10px",
+    "gap:6px",
     "min-width:0",
-    "padding-right:4px",
-    "border-radius:8px",
+    "padding:4px 8px",
+    "background:#ffffff",
+    "border-radius:6px",
+  ].join(";");
+}
+
+export function promptInputRowStyle(): string {
+  return [
+    "display:flex",
+    "align-items:center",
+    "gap:8px",
+    "min-height:28px",
+    "min-width:0",
   ].join(";");
 }
 
 export function textareaStyle(): string {
   return [
     "width:100%",
-    "min-height:18px",
+    "min-height:20px",
     "max-height:216px",
     "border:none",
-    "background:transparent",
-    "color:#111827",
+    "background:linear-gradient(180deg, #ffffff 0%, #f7f7f7 100%)",
+    "color:rgba(0,0,0,0.86)",
     "padding:0",
-    "font-size:16px",
-    "font-weight:400",
-    "line-height:1.45",
+    "font-size:14px",
+    "font-weight:500",
+    "line-height:20px",
     "resize:none",
     "outline:none",
     "box-sizing:border-box",
@@ -209,7 +208,7 @@ export function attachmentTabsStyle(): string {
   return [
     "display:flex",
     "align-items:center",
-    "gap:8px",
+    "gap:6px",
     "flex-wrap:wrap",
   ].join(";");
 }
@@ -217,22 +216,22 @@ export function attachmentTabsStyle(): string {
 export function attachmentChipStyle(kind: "comment" | "sketch"): string {
   const palette = kind === "comment"
     ? {
-      background: "rgba(46,36,180,0.08)",
-      border: "rgba(46,36,180,0.16)",
-      color: "#2e24b4",
-    }
+        background: "rgba(17,17,17,0.06)",
+        border: "rgba(17,17,17,0.10)",
+        color: "#111111",
+      }
     : {
-      background: "rgba(177,37,27,0.08)",
-      border: "rgba(177,37,27,0.14)",
-      color: "#b1251b",
-    };
+        background: "rgba(192,4,4,0.08)",
+        border: "rgba(192,4,4,0.12)",
+        color: "#c00404",
+      };
 
   return [
     "display:inline-flex",
     "align-items:center",
-    "gap:8px",
-    "min-height:32px",
-    "padding:0 10px",
+    "gap:6px",
+    "min-height:24px",
+    "padding:0 8px",
     "border-radius:999px",
     `background:${palette.background}`,
     `border:1px solid ${palette.border}`,
@@ -242,9 +241,9 @@ export function attachmentChipStyle(kind: "comment" | "sketch"): string {
 
 export function attachmentLabelStyle(): string {
   return [
-    "font-size:12px",
+    "font-size:11px",
     "font-weight:600",
-    "line-height:1.3",
+    "line-height:1.2",
   ].join(";");
 }
 
@@ -253,14 +252,14 @@ export function attachmentClearStyle(): string {
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
-    "width:18px",
-    "height:18px",
+    "width:16px",
+    "height:16px",
     "padding:0",
     "border:none",
     "border-radius:999px",
-    "background:rgba(255,255,255,0.72)",
+    "background:rgba(255,255,255,0.82)",
     "color:inherit",
-    "font-size:13px",
+    "font-size:11px",
     "line-height:1",
     "cursor:pointer",
   ].join(";");
@@ -271,16 +270,16 @@ export function sendButtonStyle(disabled: boolean): string {
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
-    "width:24px",
-    "height:24px",
-    "padding:0",
+    "width:28px",
+    "height:28px",
+    "padding:2px",
     "border:none",
     "border-radius:999px",
     disabled ? "background:#c8cdd8" : "background:#213cd5",
     "color:#ffffff",
     disabled ? "cursor:not-allowed" : "cursor:pointer",
     "flex-shrink:0",
-    "transition:background 150ms ease, transform 150ms ease",
+    "transition:background 150ms ease",
   ].join(";");
 }
 
@@ -288,7 +287,7 @@ export function presentSelectGridStyle(): string {
   return [
     "display:flex",
     "align-items:center",
-    "gap:10px",
+    "gap:8px",
     "flex-wrap:wrap",
   ].join(";");
 }
@@ -297,20 +296,20 @@ export function presentBodyStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:10px",
+    "gap:8px",
   ].join(";");
 }
 
 export function selectStyle(): string {
   return [
-    "flex:1 1 220px",
+    "flex:1 1 200px",
     "min-width:0",
     "max-width:100%",
-    "height:40px",
-    "border:1px solid rgba(15,23,42,0.12)",
-    "border-radius:12px",
+    "height:36px",
+    "border:1px solid rgba(0,0,0,0.10)",
+    "border-radius:8px",
     "background:#ffffff",
-    "color:#111827",
+    "color:#111111",
     "padding:0 12px",
     "font-size:13px",
     "font-weight:500",
@@ -338,9 +337,9 @@ export function sectionCardStyle(): string {
   return [
     "display:flex",
     "flex-direction:column",
-    "gap:10px",
-    "padding:12px",
-    "border-radius:12px",
+    "gap:8px",
+    "padding:10px",
+    "border-radius:10px",
     "background:rgba(249,250,251,0.96)",
     "border:1px solid rgba(15,23,42,0.08)",
   ].join(";");
@@ -359,8 +358,8 @@ export function reviewCardStyle(): string {
     "display:flex",
     "flex-direction:column",
     "gap:6px",
-    "padding:12px",
-    "border-radius:12px",
+    "padding:10px",
+    "border-radius:10px",
     "background:#ffffff",
     "border:1px solid rgba(15,23,42,0.08)",
   ].join(";");
@@ -378,11 +377,11 @@ export function reviewResultTitleStyle(): string {
 export function textInputStyle(): string {
   return [
     "width:100%",
-    "height:38px",
-    "border:1px solid rgba(15,23,42,0.12)",
-    "border-radius:12px",
+    "height:36px",
+    "border:1px solid rgba(0,0,0,0.10)",
+    "border-radius:8px",
     "background:#ffffff",
-    "color:#111827",
+    "color:#111111",
     "padding:0 12px",
     "font-size:13px",
     "outline:none",
@@ -406,10 +405,10 @@ export function buttonStyle(kind: "primary" | "secondary" | "disabled"): string 
       "display:inline-flex",
       "align-items:center",
       "justify-content:center",
-      "height:36px",
+      "height:32px",
       "padding:0 12px",
       "border:none",
-      "border-radius:10px",
+      "border-radius:8px",
       "background:#e5e7eb",
       "color:#9ca3af",
       "font-size:12px",
@@ -420,24 +419,24 @@ export function buttonStyle(kind: "primary" | "secondary" | "disabled"): string 
 
   const palette = kind === "primary"
     ? {
-      background: "#111827",
-      color: "#ffffff",
-      border: "none",
-    }
+        background: "#111827",
+        color: "#ffffff",
+        border: "none",
+      }
     : {
-      background: "#ffffff",
-      color: "#374151",
-      border: "1px solid rgba(15,23,42,0.12)",
-    };
+        background: "#ffffff",
+        color: "#374151",
+        border: "1px solid rgba(15,23,42,0.12)",
+      };
 
   return [
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
-    "height:36px",
+    "height:32px",
     "padding:0 12px",
     `border:${palette.border}`,
-    "border-radius:10px",
+    "border-radius:8px",
     `background:${palette.background}`,
     `color:${palette.color}`,
     "font-size:12px",

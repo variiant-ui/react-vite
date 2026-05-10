@@ -34,6 +34,11 @@ ${variantOverlayPopoverSelector} {
 
 ${variantOverlayPopoverSelector}::backdrop {
   background: transparent;
+}
+
+[data-variant-agent-prompt="true"]::placeholder {
+  color: rgba(0, 0, 0, 0.54);
+  font-weight: 500;
 }`;
   document.head.appendChild(style);
 }

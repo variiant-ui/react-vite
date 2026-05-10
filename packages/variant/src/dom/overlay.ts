@@ -27,6 +27,7 @@ import {
   presentBodyStyle,
   presentSelectGridStyle,
   promptColumnStyle,
+  promptInputRowStyle,
   promptInputSurfaceStyle,
   promptToolButtonStyle,
   promptToolIconStyle,
@@ -41,9 +42,7 @@ import {
   tabRailStyle,
   textareaStyle,
   textInputStyle,
-  toolbarHaloStyle,
   toolbarSceneStyle,
-  verticalDividerStyle,
 } from "./overlay-styles";
 
 export { variantOverlayZIndex } from "./overlay-styles";
@@ -105,20 +104,7 @@ export function renderOverlay(
   container.innerHTML = `
     <div data-variant-toolbar-shell="true" style="${hudShellStyle()}">
       <div style="${toolbarSceneStyle(true)}">
-        <div style="${tabRailStyle()}">
-          <button
-            type="button"
-            data-variant-primary-tool="prompt"
-            aria-pressed="${ideateActive ? "true" : "false"}"
-            style="${tabButtonStyle(ideateActive)}"
-          >Ideate</button>
-          <button
-            type="button"
-            data-variant-panel-tab="present"
-            aria-pressed="${ideateActive ? "false" : "true"}"
-            style="${tabButtonStyle(!ideateActive)}"
-          >Present</button>
-        </div>
+        ${ideateActive ? renderIdeateToolRail(snapshot) : renderPresentRail()}
         <div data-variant-toolbar-panel="true" style="${panelShellStyle(panelVisible)}">
           <div style="${panelFrameStyle()}">
             ${ideateActive
@@ -264,35 +250,66 @@ export function renderOverlay(
 function renderIdeatePanel(snapshot: VariantRuntimeSnapshot, promptDisabled: boolean): string {
   return `
     <div style="${composerRowStyle()}">
-      <div style="${promptToolRailStyle()}">
-        ${renderPromptToolButton({
-    kind: "sketch",
-    active: snapshot.toolMode === "sketch",
-  })}
-        ${renderPromptToolButton({
-    kind: "comment",
-    active: snapshot.toolMode === "comment",
-  })}
-      </div>
-      <div aria-hidden="true" style="${verticalDividerStyle()}"></div>
       <div style="${promptColumnStyle()}">
         <div style="${promptInputSurfaceStyle()}">
-          <textarea
-            data-variant-agent-prompt="true"
-            style="${textareaStyle()}"
-            placeholder="Create something new..."
-            ${snapshot.agent.status === "running" ? "disabled" : ""}
-          >${escapeHtml(snapshot.agent.prompt)}</textarea>
+          <div style="${promptInputRowStyle()}">
+            <textarea
+              data-variant-agent-prompt="true"
+              style="${textareaStyle()}"
+              placeholder="Create something new..."
+              ${snapshot.agent.status === "running" ? "disabled" : ""}
+            >${escapeHtml(snapshot.agent.prompt)}</textarea>
+            <button
+              data-variant-agent-run="true"
+              style="${sendButtonStyle(promptDisabled)}"
+              ${promptDisabled ? "disabled" : ""}
+              aria-label="Run prompt"
+              title="Run prompt"
+            >${renderPromptSendIcon()}</button>
+          </div>
           ${renderAttachmentChips(snapshot)}
         </div>
       </div>
+    </div>`;
+}
+
+function renderIdeateToolRail(snapshot: VariantRuntimeSnapshot): string {
+  return `
+    <div style="${tabRailStyle()}">
+      <div style="${promptToolRailStyle()}">
+        ${renderPromptToolButton({
+          kind: "sketch",
+          active: snapshot.toolMode === "sketch",
+        })}
+        ${renderPromptToolButton({
+          kind: "comment",
+          active: snapshot.toolMode === "comment",
+        })}
+      </div>
       <button
-        data-variant-agent-run="true"
-        style="${sendButtonStyle(promptDisabled)}"
-        ${promptDisabled ? "disabled" : ""}
-        aria-label="Run prompt"
-        title="Run prompt"
-      >${renderPromptSendIcon()}</button>
+        type="button"
+        data-variant-panel-tab="present"
+        aria-pressed="false"
+        style="${tabButtonStyle(false)}"
+      >Present</button>
+    </div>`;
+}
+
+function renderPresentRail(): string {
+  return `
+    <div style="${tabRailStyle()}">
+      <button
+        type="button"
+        data-variant-primary-tool="prompt"
+        aria-pressed="false"
+        style="${tabButtonStyle(false)}"
+      >Ideate</button>
+      <button
+        type="button"
+        data-variant-panel-tab="present"
+        aria-pressed="true"
+        style="${tabButtonStyle(true)}"
+      >Present</button>
     </div>`;
 }
 
@@ -413,7 +430,7 @@ function togglePromptTool(
 function syncPromptTextareaHeight(field: HTMLTextAreaElement): void {
   field.style.height = "0px";
   const nextHeight = Math.min(field.scrollHeight, 216);
-  field.style.height = `${Math.max(nextHeight, 24)}px`;
+  field.style.height = `${Math.max(nextHeight, 20)}px`;
   field.style.overflowY = field.scrollHeight > 216 ? "auto" : "hidden";
 }
 
@@ -553,21 +570,22 @@ function renderPromptSendIcon(): string {
 
 function renderSketchToolIcon(size = 36): string {
   return `
-    <svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M9 8.8C11.4 6.9 15.8 6.5 18.1 8.9C20.5 11.4 18.5 13.5 15.2 14.5C12 15.5 10.1 17.1 10.6 20C11.1 22.7 13.6 24.4 16.5 24.2C20 23.9 22.1 21.8 24.9 20.8C27.2 20 28.8 20.7 29.8 22.3"
-        stroke="#B1251B"
-        stroke-width="${size <= 18 ? "1.8" : "2.6"}"
-        stroke-linecap="round"
-        stroke-linejoin="round"/>
+    <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        d="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25ZM20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z"
+        fill="currentColor"
+      />
     </svg>`;
 }
 
 function renderCommentToolIcon(size = 36): string {
   return `
-    <svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M11 20.4C8.1 17.4 8.1 12.5 11 9.6C13.9 6.7 18.6 6.7 21.5 9.6C24.4 12.5 24.4 17.4 21.5 20.4C18.6 23.3 13.9 23.3 11 20.4Z"
-        stroke="#2E24B4"
-        stroke-width="${size <= 18 ? "1.8" : "2.4"}"/>
-      <path d="M22.8 22.1L25.6 24.9" stroke="#2E24B4" stroke-width="${size <= 18 ? "1.6" : "2"}" stroke-linecap="round"/>
+    <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        d="M4 5.5C4 4.67 4.67 4 5.5 4H18.5C19.33 4 20 4.67 20 5.5V14.5C20 15.33 19.33 16 18.5 16H8L4 20V5.5Z"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linejoin="round"
+      />
     </svg>`;
 }

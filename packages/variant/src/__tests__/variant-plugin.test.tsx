@@ -50,16 +50,19 @@ function dispatchDomEvent(target: EventTarget, event: Event): boolean {
 }
 
 function openPromptTray(): void {
-  const buttons = document.querySelectorAll('[data-variant-primary-tool="prompt"]');
-  const button = (buttons[buttons.length - 1] ?? null) as HTMLButtonElement | null;
-  expect(button).not.toBeNull();
-  fireEvent.click(button!);
+  act(() => {
+    const controller = getVariantRuntimeController();
+    controller.actions.setDockMode("ideate");
+    controller.actions.setDockExpanded(true);
+  });
 }
 
 function openPresentTray(): void {
-  const button = document.querySelector('[data-variant-panel-tab="present"]') as HTMLButtonElement | null;
-  expect(button).not.toBeNull();
-  fireEvent.click(button!);
+  act(() => {
+    const controller = getVariantRuntimeController();
+    controller.actions.setDockMode("review");
+    controller.actions.setDockExpanded(true);
+  });
 }
 
 describe("variant runtime proxy", () => {
@@ -357,6 +360,47 @@ describe("variant runtime proxy", () => {
     });
     expect(document.querySelector('[data-variiant-canvas-fullscreen="true"]')).not.toBeNull();
     expect(document.body.textContent).toContain("Review Stack");
+  });
+
+  it("keeps the Present switch available from the ideate toolbar", async () => {
+    const OrdersTable = createVariantProxy({
+      sourceId: "src/components/OrdersTable.tsx",
+      displayName: "Orders Table",
+      selected: "source",
+      variants: {
+        source: function SourceVariant() {
+          return <div>Source table</div>;
+        },
+      },
+    });
+
+    render(<OrdersTable />);
+    installVariantOverlay();
+    const controller = getVariantRuntimeController();
+
+    dispatchWindowEvent(
+      new KeyboardEvent("keydown", {
+        key: ".",
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(controller.getSnapshot().dockMode).toBe("ideate");
+      expect(document.querySelector('[data-variant-agent-prompt="true"]')).not.toBeNull();
+    });
+
+    const presentButtons = document.querySelectorAll('[data-variant-panel-tab="present"]');
+    const presentButton = presentButtons[presentButtons.length - 1] as HTMLButtonElement | undefined;
+    expect(presentButton).not.toBeNull();
+    fireEvent.click(presentButton!);
+
+    await waitFor(() => {
+      expect(controller.getSnapshot().dockMode).toBe("review");
+    });
+    expect(document.querySelector('[data-variant-active-source="true"]')).not.toBeNull();
   });
 
   it("renders contextual comments against the visible component instance", async () => {
