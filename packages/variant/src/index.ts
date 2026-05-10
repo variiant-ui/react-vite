@@ -1,4 +1,5 @@
 export { variantPlugin } from "./plugin";
+export { variantNextPlugin, withVariantNext } from "./plugin-next";
 export { variantWebpackDevMiddleware, variantWebpackPlugin } from "./plugin-webpack";
 export {
   createVariantRuntimeController,

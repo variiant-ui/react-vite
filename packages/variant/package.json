@@ -49,12 +49,16 @@
     "test": "vitest run"
   },
   "peerDependencies": {
+    "next": ">=13",
     "react": ">=18",
     "react-dom": ">=18",
     "vite": ">=5",
     "webpack": ">=5"
   },
   "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    },
     "vite": {
       "optional": true
     },

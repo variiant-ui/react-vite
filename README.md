@@ -106,6 +106,24 @@ export default {
 
 The Webpack adapter writes generated proxy modules under `.variiant/cache/webpack/` and keeps that cache out of git.
 
+## Next.js Webpack Setup
+
+Wrap your `next.config.js` or `next.config.mjs` export:
+
+```js
+import { withVariantNext } from "@variiant-ui/react-vite";
+
+const nextConfig = {
+  // your existing Next.js config
+};
+
+export default withVariantNext(nextConfig);
+```
+
+The Next.js adapter applies the Webpack adapter to the client compiler and, in development, installs an internal rewrite for `/__variiant/*` to a local variiant bridge server. You do not need to add API routes, proxy routes, or dev-server middleware yourself.
+
+This adapter targets Next.js running with Webpack. Turbopack does not run custom Webpack plugins.
+
 ## Package Name
 
 The current package name is still `@variiant-ui/react-vite` for compatibility. If Webpack support graduates beyond this adapter, the planned public package name is `@variiant-ui/react` with Vite and Webpack adapters exported from one package.

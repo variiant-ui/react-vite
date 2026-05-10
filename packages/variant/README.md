@@ -64,6 +64,22 @@ export default {
 
 Webpack proxy modules are generated under `.variiant/cache/webpack/`.
 
+## Next.js Webpack Setup
+
+```js
+import { withVariantNext } from "@variiant-ui/react-vite";
+
+const nextConfig = {
+  // your existing Next.js config
+};
+
+export default withVariantNext(nextConfig);
+```
+
+The Next.js adapter applies the Webpack adapter to the client compiler and adds an internal development rewrite for the variiant browser bridge. You do not need to add API routes or custom dev-server middleware.
+
+This adapter targets Next.js running with Webpack, not Turbopack.
+
 ## Local proving workflow
 
 When this package is linked from a local checkout, the development bootstrap prefers the package source runtime when `src/runtime.tsx` is available.

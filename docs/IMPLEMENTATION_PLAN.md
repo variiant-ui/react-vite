@@ -20,6 +20,7 @@ The current repo now includes:
 - copy-only deterministic tweak analysis and apply routes for generated variants
 - a shared bundler core for registry/proxy generation
 - a Webpack 5 adapter that writes physical proxy modules under `.variiant/cache/webpack/`
+- a Next.js Webpack config wrapper that applies the client Webpack adapter and hides bridge routes behind rewrites
 
 The remaining work in this plan is mostly about expanding the deterministic tweak surface and tightening the overall workflow polish.
 
@@ -30,6 +31,7 @@ These constraints stay fixed while the runtime evolves:
 - public integration remains one package plus `.variiant/variants/`
 - Vite integration remains `variantPlugin()`
 - Webpack integration is `variantWebpackPlugin()` plus `variantWebpackDevMiddleware()` for dev-server routes
+- Next.js Webpack integration is `withVariantNext()` with no user-authored routes
 - business logic belongs in `packages/variant/src/runtime-core.ts`
 - browser-only interaction belongs in `packages/variant/src/runtime-dom.ts`
 - React-specific rendering concerns belong in `packages/variant/src/runtime.tsx`

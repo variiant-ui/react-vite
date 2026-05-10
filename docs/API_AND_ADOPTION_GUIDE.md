@@ -21,6 +21,7 @@ Current public API:
 - `variantPlugin()` for Vite
 - `variantWebpackPlugin()` for Webpack 5
 - `variantWebpackDevMiddleware()` for Webpack dev-server agent/tweak routes
+- `withVariantNext()` for Next.js apps running with Webpack
 - `.variiant/variants/` as the canonical variant workspace
 - optional top-level `variiant.config.json` for the local agent bridge
 - optional `agent.refresh` config or `variantPlugin({ agentRefresh })` override
@@ -100,6 +101,20 @@ export default {
 };
 ```
 
+### 2c. Or wrap Next.js config
+
+```js
+import { withVariantNext } from "@variiant-ui/react-vite";
+
+const nextConfig = {
+  // existing config
+};
+
+export default withVariantNext(nextConfig);
+```
+
+The Next.js adapter applies the Webpack adapter only to the client compiler. In development, it starts a local variiant bridge and injects a hidden rewrite for `/__variiant/*`, so users do not need to create API routes or middleware.
+
 ### 3. Keep imports unchanged
 
 ```tsx
@@ -166,6 +181,13 @@ In Webpack development:
 - matching imports are redirected to those generated proxy files
 - a dev-server middleware exposes the same `/__variiant/*` browser bridge routes
 - the same runtime selects between source and exploratory variants on the live page
+
+In Next.js Webpack development:
+
+- the config wrapper composes the user's existing `webpack` and `rewrites` config
+- client compilation receives the Webpack adapter
+- server and edge compilations are left alone so runtime proxies do not enter server bundles
+- the browser bridge routes are proxied through a generated rewrite to a local bridge server
 
 In production:
 
@@ -239,6 +261,7 @@ This repo currently implements:
 
 - Vite plugin integration
 - Webpack 5 adapter integration
+- Next.js Webpack config wrapper integration
 - development runtime overlay and keybindings
 - fullscreen comparison canvas
 - production-safe selected-variant builds
