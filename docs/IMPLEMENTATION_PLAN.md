@@ -32,6 +32,7 @@ These constraints stay fixed while the runtime evolves:
 - Vite integration remains `variantPlugin()`
 - Webpack integration is `variantWebpackPlugin()` plus `variantWebpackDevMiddleware()` for dev-server routes
 - Next.js Webpack integration is `withVariantNext()` with no user-authored routes
+- the Next.js adapter must preserve user `webpack`/`rewrites` config, touch only the client compiler, and hide bridge routing behind a development rewrite
 - business logic belongs in `packages/variant/src/runtime-core.ts`
 - browser-only interaction belongs in `packages/variant/src/runtime-dom.ts`
 - React-specific rendering concerns belong in `packages/variant/src/runtime.tsx`

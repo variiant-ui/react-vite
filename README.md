@@ -124,6 +124,15 @@ The Next.js adapter applies the Webpack adapter to the client compiler and, in d
 
 This adapter targets Next.js running with Webpack. Turbopack does not run custom Webpack plugins.
 
+How it works in Next.js:
+
+- `withVariantNext()` preserves your existing `webpack` and `rewrites` config.
+- Only the browser/client Webpack compiler receives the variant import proxy plugin.
+- Server and edge compilers are left alone, so variant runtime code is not injected into server bundles.
+- In development, the wrapper starts a localhost bridge server for `/__variiant/*` requests and adds a rewrite to proxy those requests through Next.js.
+- In production, the rewrite is not added; imports still resolve through production proxy modules so only the selected implementation is bundled.
+- Generated proxy modules are written under `.variiant/cache/webpack/`.
+
 ## Package Name
 
 The current package name is still `@variiant-ui/react-vite` for compatibility. If Webpack support graduates beyond this adapter, the planned public package name is `@variiant-ui/react` with Vite and Webpack adapters exported from one package.

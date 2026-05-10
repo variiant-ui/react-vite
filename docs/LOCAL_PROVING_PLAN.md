@@ -32,7 +32,7 @@ We need evidence for these claims:
 Use a real app with:
 
 - React and TypeScript
-- Vite
+- Vite or Next.js running with Webpack
 - a visually meaningful route
 - at least one component family worth iterating on
 
@@ -69,7 +69,9 @@ When the host app seems stale anyway, clear Vite's optimized dependency cache on
 rm -rf node_modules/.vite
 ```
 
-### 2. Add the plugin
+### 2. Add the bundler adapter
+
+For Vite:
 
 ```ts
 import { defineConfig } from "vite";
@@ -80,6 +82,22 @@ export default defineConfig({
   plugins: [variantPlugin(), react()],
 });
 ```
+
+For Next.js running with Webpack:
+
+```js
+import { withVariantNext } from "@variiant-ui/react-vite";
+
+const nextConfig = {
+  // existing config
+};
+
+export default withVariantNext(nextConfig);
+```
+
+The Next.js proof should confirm that no user-authored API routes, middleware, or manual rewrites are needed. The adapter should preserve existing `webpack` and `rewrites` config, apply Variant only to the client compiler, and proxy `/__variiant/*` through its internal development bridge.
+
+Do not use this adapter to prove Turbopack. Turbopack does not execute custom Webpack plugins, so that is a separate compatibility track.
 
 ### 3. Keep imports unchanged
 

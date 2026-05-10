@@ -115,6 +115,15 @@ export default withVariantNext(nextConfig);
 
 The Next.js adapter applies the Webpack adapter only to the client compiler. In development, it starts a local variiant bridge and injects a hidden rewrite for `/__variiant/*`, so users do not need to create API routes or middleware.
 
+Behavior details:
+
+- `withVariantNext()` calls the user's existing `webpack` function first, then appends the Variant Webpack adapter for client builds.
+- The server and edge compilers are returned unchanged after the user's config runs.
+- The user's existing `rewrites()` result is preserved. Variant prepends a `beforeFiles` rewrite for `/__variiant/:path*` only outside production.
+- The rewrite points to a localhost bridge server owned by Variant, which serves the same config, agent, and deterministic tweak routes as the Vite and Webpack dev integrations.
+- Production builds keep the import-proxy behavior but do not add the development bridge rewrite.
+- Turbopack is outside this adapter because it does not execute custom Webpack plugins.
+
 ### 3. Keep imports unchanged
 
 ```tsx
@@ -188,12 +197,14 @@ In Next.js Webpack development:
 - client compilation receives the Webpack adapter
 - server and edge compilations are left alone so runtime proxies do not enter server bundles
 - the browser bridge routes are proxied through a generated rewrite to a local bridge server
+- generated proxy modules still live under `.variiant/cache/webpack/`
 
 In production:
 
 - imports are still rewritten
 - but they resolve to only one production implementation per component boundary
 - non-selected exploratory files are excluded from the production graph
+- Next.js does not receive the development `/__variiant/*` rewrite
 
 That keeps the app import stable while moving Variant behavior into the toolchain.
 

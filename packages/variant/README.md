@@ -80,6 +80,15 @@ The Next.js adapter applies the Webpack adapter to the client compiler and adds 
 
 This adapter targets Next.js running with Webpack, not Turbopack.
 
+In Next.js:
+
+- existing `webpack` and `rewrites` config is preserved and composed
+- only the client Webpack compiler receives the variant adapter
+- server and edge compilers are not modified
+- development bridge requests to `/__variiant/*` are proxied through an internal rewrite
+- production builds do not add the development rewrite
+- generated proxy modules live under `.variiant/cache/webpack/`
+
 ## Local proving workflow
 
 When this package is linked from a local checkout, the development bootstrap prefers the package source runtime when `src/runtime.tsx` is available.
