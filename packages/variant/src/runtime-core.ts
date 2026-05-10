@@ -56,6 +56,8 @@ export type VariantComment = {
   sourceId: string;
   instanceId: string | null;
   text: string;
+  domOpeningTag?: string | null;
+  domTextSnippet?: string | null;
   anchor: VariantCommentAnchor;
   viewportPoint: VariantCommentViewportPoint;
   visibilityKey: string | null;
@@ -151,6 +153,7 @@ export type RuntimeState = {
   overlayOpen: boolean;
   canvasOpen: boolean;
   dockMode: VariantDockMode;
+  dockExpanded: boolean;
   toolMode: VariantToolMode;
   activeSourceId: string | null;
   components: RuntimeComponentRecord[];
@@ -192,6 +195,7 @@ export type VariantRuntimeController = {
     closeCanvas: () => void;
     closeSurface: () => void;
     setDockMode: (mode: VariantDockMode) => void;
+    setDockExpanded: (expanded: boolean) => void;
     setToolMode: (mode: VariantToolMode) => void;
     setCanvasMode: (mode: VariantCanvasMode) => void;
     setCanvasTarget: (sourceId: string | null) => void;
@@ -421,6 +425,7 @@ export function createVariantRuntimeController(options: {
     overlayOpen: false,
     canvasOpen: false,
     dockMode: "ideate",
+    dockExpanded: false,
     toolMode: "none",
     activeSourceId: null,
     components: [],
@@ -500,6 +505,7 @@ export function createVariantRuntimeController(options: {
       overlayOpen: state.overlayOpen,
       canvasOpen: state.canvasOpen,
       dockMode: state.dockMode,
+      dockExpanded: state.dockExpanded,
       toolMode: state.toolMode,
       activeSourceId: state.activeSourceId,
       components: state.components,
@@ -546,6 +552,7 @@ export function createVariantRuntimeController(options: {
 
     state.reviewResults = reviewResults;
     state.dockMode = "review";
+    state.dockExpanded = true;
     if (reviewResults.some((entry) => entry.sourceId === state.activeSourceId)) {
       state.canvas = {
         ...state.canvas,
@@ -598,6 +605,16 @@ export function createVariantRuntimeController(options: {
     emit();
   };
 
+  const expandOverlayDock = (): void => {
+    if (state.toolMode === "tweak") {
+      state.dockMode = "tweak";
+    } else if (state.dockMode !== "review") {
+      state.dockMode = "ideate";
+    }
+
+    state.dockExpanded = true;
+  };
+
   emit();
 
   return {
@@ -641,10 +658,14 @@ export function createVariantRuntimeController(options: {
     actions: {
       openOverlay() {
         state.surface = "overlay";
+        expandOverlayDock();
         emit();
       },
       toggleOverlay() {
         state.surface = state.surface === "overlay" ? "closed" : "overlay";
+        if (state.surface === "overlay") {
+          expandOverlayDock();
+        }
         emit();
       },
       closeOverlay() {
@@ -695,6 +716,14 @@ export function createVariantRuntimeController(options: {
         if (mode !== "tweak" && state.toolMode === "tweak") {
           state.toolMode = "none";
         }
+        emit();
+      },
+      setDockExpanded(expanded) {
+        if (state.dockExpanded === expanded) {
+          return;
+        }
+
+        state.dockExpanded = expanded;
         emit();
       },
       setToolMode(mode) {
@@ -1016,6 +1045,7 @@ export function createVariantRuntimeController(options: {
       },
       startAgentRun() {
         state.dockMode = "ideate";
+        state.dockExpanded = true;
         state.agent.status = "running";
         state.agent.logs = [];
         state.agent.sessionId = null;

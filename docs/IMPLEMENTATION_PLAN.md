@@ -4,7 +4,7 @@
 
 Implement the next product phase for `@variiant-ui/react-vite`:
 
-- move from a generic floating-bar workflow to explicit `Ideate`, `Review`, and `Tweak` workflows
+- move from a generic floating-bar workflow to explicit `Ideate`, `Present`, `Review`, and `Tweak` workflows
 - remove page-mode comparison from the target architecture
 - support richer prompt context through comments and sketches
 - add deterministic post-generation tweaks, starting with copy
@@ -14,9 +14,9 @@ Implement the next product phase for `@variiant-ui/react-vite`:
 
 The current repo now includes:
 
-- explicit `Ideate`, `Review`, and `Tweak` dock modes
+- a transient bottom-centered toolbar with `Ideate` and `Present` tabs and a floating panel
 - component-focused review results instead of page-mode comparison as the primary direction
-- contextual comments and sketch attachments in runtime state and session payloads
+- contextual comments and sketch attachments in runtime state and session payloads, with comments carrying bounded DOM/tag text context and sketch attachments rendered as viewport composites
 - copy-only deterministic tweak analysis and apply routes for generated variants
 
 The remaining work in this plan is mostly about expanding the deterministic tweak surface and tightening the overall workflow polish.
@@ -35,7 +35,7 @@ These constraints stay fixed while the runtime evolves:
 
 ## Product model to implement
 
-The browser runtime should evolve into three coordinated workflows.
+The browser runtime should evolve into four coordinated workflows.
 
 ### 1. Ideate
 
@@ -49,7 +49,18 @@ Artifacts:
 - optional sketch attachment
 - page metadata
 
-### 2. Review
+### 2. Present
+
+The user is choosing which mounted component and variant to show or refine.
+
+Artifacts:
+
+- mounted component selection
+- selected variant
+- result visibility
+- tweak entrypoints
+
+### 3. Review
 
 The user is evaluating generated results.
 
@@ -59,7 +70,7 @@ Artifacts:
 - live-page preview state
 - component-family comparison state
 
-### 3. Tweak
+### 4. Tweak
 
 The user is making bounded post-generation edits.
 
@@ -145,22 +156,18 @@ type VariantTweakCatalogEntry =
 
 ### `runtime-dom.ts`
 
-Replace the current browser chrome direction with a transient bottom-centered dock.
+Replace the current browser chrome direction with a transient bottom-centered toolbar.
 
-The dock should support:
+The toolbar should support:
 
-- prompt entry
-- small explicit tool buttons
-- attachment chips
-- run status
-- result summaries
-- tweak controls
+- an `Ideate` tab with prompt entry, small explicit tool buttons, attachment chips, and run status
+- a `Present` tab with mounted component and variant dropdowns, result summaries, and tweak controls
 
 New DOM responsibilities:
 
 - hover targeting and boundary highlighting
 - comment placement
-- comment bubble rendering
+- sticky-note comment rendering near the clicked point
 - visibility-aware comment display
 - sketch canvas lifecycle
 - review result presentation

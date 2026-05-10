@@ -20,6 +20,8 @@ function getPromptComments(requestPayload: Record<string, unknown>): Array<{
   sourceId: string;
   instanceId: string | null;
   text: string;
+  domOpeningTag: string | null;
+  domTextSnippet: string | null;
   anchor: string;
 }> {
   const comments = Array.isArray(requestPayload.comments) ? requestPayload.comments : [];
@@ -40,6 +42,8 @@ function getPromptComments(requestPayload: Record<string, unknown>): Array<{
         sourceId: typeof comment.sourceId === "string" ? comment.sourceId : "unknown",
         instanceId: typeof comment.instanceId === "string" ? comment.instanceId : null,
         text: typeof comment.text === "string" ? comment.text.trim() : "",
+        domOpeningTag: typeof comment.domOpeningTag === "string" ? comment.domOpeningTag.trim() : null,
+        domTextSnippet: typeof comment.domTextSnippet === "string" ? comment.domTextSnippet.trim() : null,
         anchor,
       };
     })
@@ -234,6 +238,8 @@ ${prompt || "(no prompt provided)"}
 ${comments.length > 0 ? `## COMMENTS
 ${comments.map((comment, index) => `${index + 1}. ${comment.text}
    Target: ${comment.sourceId}${comment.instanceId ? ` (${comment.instanceId})` : ""}
+   DOM: ${comment.domOpeningTag || "not captured"}
+   Current text: ${comment.domTextSnippet || "not captured"}
    Anchor: ${comment.anchor || "not captured"}`).join("\n")}` : ""}
 
 ## CONTEXT FILE
