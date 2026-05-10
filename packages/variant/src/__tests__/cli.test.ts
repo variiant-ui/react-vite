@@ -18,7 +18,7 @@ describe("variiant cli", () => {
 
     expect(path.basename(configPath)).toBe("variiant.config.json");
     expect(JSON.parse(fs.readFileSync(configPath, "utf8"))).toEqual(createDefaultConfig("text", "codex", null));
-    expect(fs.readFileSync(path.join(tempRoot, ".variiant", ".gitignore"), "utf8")).toBe("sessions/\n");
+    expect(fs.readFileSync(path.join(tempRoot, ".variiant", ".gitignore"), "utf8")).toBe("sessions/\ncache/\n");
   });
 
   it("writes a custom agent command when requested", () => {
@@ -100,7 +100,7 @@ describe("variiant cli", () => {
       command: null,
     });
 
-    expect(fs.readFileSync(path.join(workspaceDir, ".gitignore"), "utf8")).toBe("artifacts/\nsessions/\n");
+    expect(fs.readFileSync(path.join(workspaceDir, ".gitignore"), "utf8")).toBe("artifacts/\nsessions/\ncache/\n");
   });
 
   it("treats symlinked bin shims as direct cli execution", () => {

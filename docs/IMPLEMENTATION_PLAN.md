@@ -1,14 +1,14 @@
-# variiant-ui React/Vite Implementation Plan
+# variiant-ui React Implementation Plan
 
 ## Goal
 
-Implement the next product phase for `@variiant-ui/react-vite`:
+Implement the next product phase for `@variiant-ui/react-vite` while preparing the public surface for a future `@variiant-ui/react` package name:
 
 - move from a generic floating-bar workflow to explicit `Ideate`, `Present`, `Review`, and `Tweak` workflows
 - remove page-mode comparison from the target architecture
 - support richer prompt context through comments and sketches
 - add deterministic post-generation tweaks, starting with copy
-- preserve the existing package boundary: one package, one Vite plugin, one browser workflow
+- preserve the existing package boundary: one package, one browser workflow, with bundler adapters for Vite and Webpack
 
 ## Current implementation status
 
@@ -18,6 +18,8 @@ The current repo now includes:
 - component-focused review results instead of page-mode comparison as the primary direction
 - contextual comments and sketch attachments in runtime state and session payloads, with comments carrying bounded DOM/tag text context and sketch attachments rendered as viewport composites
 - copy-only deterministic tweak analysis and apply routes for generated variants
+- a shared bundler core for registry/proxy generation
+- a Webpack 5 adapter that writes physical proxy modules under `.variiant/cache/webpack/`
 
 The remaining work in this plan is mostly about expanding the deterministic tweak surface and tightening the overall workflow polish.
 
@@ -25,7 +27,9 @@ The remaining work in this plan is mostly about expanding the deterministic twea
 
 These constraints stay fixed while the runtime evolves:
 
-- public integration remains `variantPlugin()` plus `.variiant/variants/`
+- public integration remains one package plus `.variiant/variants/`
+- Vite integration remains `variantPlugin()`
+- Webpack integration is `variantWebpackPlugin()` plus `variantWebpackDevMiddleware()` for dev-server routes
 - business logic belongs in `packages/variant/src/runtime-core.ts`
 - browser-only interaction belongs in `packages/variant/src/runtime-dom.ts`
 - React-specific rendering concerns belong in `packages/variant/src/runtime.tsx`

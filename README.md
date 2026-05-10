@@ -28,7 +28,7 @@ That direction does not change the integration story. It changes how the runtime
 
 ## How it works
 
-variiant-ui intercepts component imports at the Vite level and replaces them with a thin proxy when a matching variant directory exists.
+variiant-ui intercepts component imports at the bundler level and replaces them with a thin proxy when a matching variant directory exists. Vite remains the primary integration; Webpack 5 support is now available through a separate adapter in the same package.
 
 Your source components are never modified. Variants live in a separate `.variiant/variants/` folder that mirrors your source tree but sits outside your main code path. If you delete the entire folder, your app is identical to what it was before you installed the package.
 
@@ -66,7 +66,7 @@ npm exec variiant init
 
 `variiant init` detects supported local agent CLIs and writes `variiant.config.json`. It also creates `.variiant/.gitignore` so session files stay out of your repo.
 
-## Vite setup
+## Vite Setup
 
 Add the plugin to your `vite.config.ts`:
 
@@ -80,7 +80,35 @@ export default defineConfig({
 });
 ```
 
-That is the whole app integration surface.
+## Webpack Setup
+
+Add the Webpack adapter to `webpack.config.js`:
+
+```js
+import {
+  variantWebpackDevMiddleware,
+  variantWebpackPlugin,
+} from "@variiant-ui/react-vite";
+
+export default {
+  plugins: [variantWebpackPlugin()],
+  devServer: {
+    setupMiddlewares: (middlewares) => {
+      middlewares.unshift({
+        name: "variiant",
+        middleware: variantWebpackDevMiddleware(),
+      });
+      return middlewares;
+    },
+  },
+};
+```
+
+The Webpack adapter writes generated proxy modules under `.variiant/cache/webpack/` and keeps that cache out of git.
+
+## Package Name
+
+The current package name is still `@variiant-ui/react-vite` for compatibility. If Webpack support graduates beyond this adapter, the planned public package name is `@variiant-ui/react` with Vite and Webpack adapters exported from one package.
 
 ## Local proving workflow
 

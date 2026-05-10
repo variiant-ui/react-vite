@@ -1,4 +1,5 @@
 export { variantPlugin } from "./plugin";
+export { variantWebpackDevMiddleware, variantWebpackPlugin } from "./plugin-webpack";
 export {
   createVariantRuntimeController,
   defaultShortcuts,
